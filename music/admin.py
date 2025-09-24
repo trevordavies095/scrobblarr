@@ -57,7 +57,7 @@ class ArtistAdmin(
     readonly_fields = ['created_at', 'updated_at']
     list_select_related = []
     ordering = ['-created_at']
-    list_editable = ['url']
+    list_editable = []
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
@@ -152,7 +152,7 @@ class AlbumAdmin(
     list_select_related = ['artist']
     ordering = ['-created_at']
     autocomplete_fields = ['artist']
-    list_editable = ['url']
+    list_editable = []
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
@@ -224,7 +224,7 @@ class TrackAdmin(
     list_select_related = ['artist', 'album']
     ordering = ['-created_at']
     autocomplete_fields = ['artist', 'album']
-    list_editable = ['duration', 'url']
+    list_editable = []
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
