@@ -14,7 +14,7 @@ from .serializers import (
     ArtistListSerializer, ArtistDetailSerializer,
     AlbumListSerializer, AlbumDetailSerializer,
     TrackListSerializer, TrackDetailSerializer,
-    ScrobbleListSerializer
+    ScrobbleListSerializer, RecentTracksSerializer
 )
 
 
@@ -22,6 +22,38 @@ class StandardResultsSetPagination(PageNumberPagination):
     page_size = 50
     page_size_query_param = 'page_size'
     max_page_size = 200
+
+
+class RecentTracksPagination(PageNumberPagination):
+    """
+    Custom pagination for Recent Tracks API to match Story 9 requirements.
+    """
+    page_size = 10
+    page_size_query_param = 'limit'
+    max_page_size = 50
+
+    def get_page_size(self, request):
+        """Get page size with Story 9 validation (min 1, max 50, default 10)."""
+        if self.page_size_query_param:
+            try:
+                page_size = int(request.query_params[self.page_size_query_param])
+                if page_size < 1:
+                    return 1
+                elif page_size > self.max_page_size:
+                    return self.max_page_size
+                return page_size
+            except (KeyError, ValueError):
+                pass
+        return self.page_size
+
+    def get_paginated_response(self, data):
+        """Return Story 9 compliant response format."""
+        return Response({
+            'results': data,
+            'count': len(data),
+            'has_next': self.page.has_next() if self.page else False,
+            'has_previous': self.page.has_previous() if self.page else False,
+        })
 
 
 class StatsViewSet(viewsets.ViewSet):
@@ -79,19 +111,22 @@ class StatsViewSet(viewsets.ViewSet):
 
     @action(detail=False)
     def recent_tracks(self, request):
-        """Get recent listening activity."""
+        """
+        Get recent listening activity.
+        Story 9 compliant endpoint with default limit 10, supports ?limit=N (max 50).
+        """
         scrobbles = Scrobble.objects.select_related(
             'track', 'track__artist', 'track__album'
         ).order_by('-timestamp')
 
-        paginator = self.pagination_class()
+        paginator = RecentTracksPagination()
         page = paginator.paginate_queryset(scrobbles, request)
 
         if page is not None:
-            serializer = ScrobbleListSerializer(page, many=True)
+            serializer = RecentTracksSerializer(page, many=True)
             return paginator.get_paginated_response(serializer.data)
 
-        serializer = ScrobbleListSerializer(scrobbles, many=True)
+        serializer = RecentTracksSerializer(scrobbles, many=True)
         return Response(serializer.data)
 
     @action(detail=False)

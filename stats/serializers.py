@@ -2,6 +2,10 @@ from rest_framework import serializers
 from music.models import Artist, Album, Track, Scrobble
 from django.db.models import Count, Max
 from django.utils import timezone
+from datetime import timedelta
+import logging
+
+logger = logging.getLogger('stats.serializers')
 
 
 class ArtistListSerializer(serializers.ModelSerializer):
@@ -61,6 +65,21 @@ class ScrobbleListSerializer(serializers.ModelSerializer):
         model = Scrobble
         fields = ['id', 'timestamp', 'track_name', 'track_id', 'artist_name', 'artist_id',
                  'album_name', 'album_id', 'lastfm_reference_id']
+
+
+class RecentTracksSerializer(serializers.ModelSerializer):
+    """
+    Story 9 compliant serializer for recent tracks API.
+    Returns track, artist, album, timestamp format.
+    """
+    track = serializers.CharField(source='track.name', read_only=True)
+    artist = serializers.CharField(source='track.artist.name', read_only=True)
+    album = serializers.CharField(source='track.album.name', read_only=True)
+    timestamp = serializers.DateTimeField(format='%Y-%m-%dT%H:%M:%SZ', read_only=True)
+
+    class Meta:
+        model = Scrobble
+        fields = ['track', 'artist', 'album', 'timestamp']
 
 
 class TrackDetailSerializer(serializers.ModelSerializer):

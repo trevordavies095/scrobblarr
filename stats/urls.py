@@ -9,6 +9,8 @@ app_name = 'stats'
 
 urlpatterns = [
     path('', include(router.urls)),
+    # Story 9: Direct recent-tracks endpoint
+    path('recent-tracks/', views.StatsViewSet.as_view({'get': 'recent_tracks'}), name='recent-tracks'),
     # Individual resource endpoints
     path('artists/<int:pk>/', views.StatsViewSet.as_view({'get': 'artists'}), name='artist-detail'),
     path('albums/<int:pk>/', views.StatsViewSet.as_view({'get': 'albums'}), name='album-detail'),

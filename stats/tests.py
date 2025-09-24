@@ -100,36 +100,106 @@ class StatsAPITestCase(APITestCase):
         self.assertEqual(data['time_periods'], ['7d', '30d', '90d', '365d', 'all'])
 
     def test_recent_tracks(self):
-        """Test recent tracks endpoint."""
+        """Test recent tracks endpoint (Story 9 compliance)."""
         url = reverse('stats:stats-recent-tracks')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        # Story 9: Check required response structure
+        self.assertIn('results', data)
+        self.assertIn('count', data)
+        self.assertIn('has_next', data)
+        self.assertIn('has_previous', data)
+
+        results = data['results']
+        self.assertTrue(len(results) > 0)
+
+        # Story 9: Default limit should be 10
+        self.assertLessEqual(len(results), 10)
+
+        # Story 9: Check response format matches specification
+        first_scrobble = results[0]
+        self.assertIn('track', first_scrobble)
+        self.assertIn('artist', first_scrobble)
+        self.assertIn('album', first_scrobble)
+        self.assertIn('timestamp', first_scrobble)
+
+        # Should NOT have old format fields
+        self.assertNotIn('track_name', first_scrobble)
+        self.assertNotIn('track_id', first_scrobble)
+        self.assertNotIn('id', first_scrobble)
+
+        # Story 9: Check ordering (most recent first)
+        if len(results) > 1:
+            self.assertGreaterEqual(
+                results[0]['timestamp'],
+                results[1]['timestamp']
+            )
+
+        # Story 9: Check ISO 8601 timestamp format
+        timestamp = first_scrobble['timestamp']
+        self.assertTrue(timestamp.endswith('Z'))
+        self.assertRegex(timestamp, r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$')
+
+    def test_recent_tracks_direct_url(self):
+        """Test Story 9 direct URL /api/recent-tracks/."""
+        url = reverse('stats:recent-tracks')
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
         self.assertIn('results', data)
         self.assertIn('count', data)
+        self.assertIn('has_next', data)
+        self.assertIn('has_previous', data)
 
-        # Should be ordered by timestamp (newest first)
-        results = data['results']
-        self.assertTrue(len(results) > 0)
+    def test_recent_tracks_limit_parameter(self):
+        """Test Story 9 ?limit=N parameter support."""
+        base_url = reverse('stats:stats-recent-tracks')
 
-        # Check first result structure
-        first_scrobble = results[0]
-        self.assertIn('id', first_scrobble)
-        self.assertIn('timestamp', first_scrobble)
-        self.assertIn('track_name', first_scrobble)
-        self.assertIn('track_id', first_scrobble)
-        self.assertIn('artist_name', first_scrobble)
-        self.assertIn('artist_id', first_scrobble)
-        self.assertIn('album_name', first_scrobble)
-        self.assertIn('album_id', first_scrobble)
+        # Test custom limit
+        response = self.client.get(base_url + '?limit=3')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertLessEqual(len(data['results']), 3)
 
-        # Check ordering (most recent first)
-        if len(results) > 1:
-            self.assertGreaterEqual(
-                results[0]['timestamp'],
-                results[1]['timestamp']
-            )
+        # Test min limit (should default to 1)
+        response = self.client.get(base_url + '?limit=0')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertLessEqual(len(data['results']), 1)
+
+        # Test max limit (should cap at 50)
+        response = self.client.get(base_url + '?limit=100')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertLessEqual(len(data['results']), 50)
+
+        # Test invalid limit (should default to 10)
+        response = self.client.get(base_url + '?limit=invalid')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertLessEqual(len(data['results']), 10)
+
+    def test_recent_tracks_pagination_metadata(self):
+        """Test Story 9 pagination metadata (has_next, has_previous)."""
+        url = reverse('stats:stats-recent-tracks')
+
+        # Test first page
+        response = self.client.get(url + '?limit=2')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        # Should have pagination metadata
+        self.assertIn('has_next', data)
+        self.assertIn('has_previous', data)
+        self.assertEqual(data['has_previous'], False)
+
+        # If we have more than 2 scrobbles, should have next page
+        if len(self.scrobbles) > 2:
+            self.assertEqual(data['has_next'], True)
 
     def test_top_artists_default_period(self):
         """Test top artists endpoint with default 30d period."""
@@ -355,7 +425,14 @@ class StatsAPITestCase(APITestCase):
                 data = response.json()
                 self.assertIn('results', data)
                 self.assertEqual(len(data['results']), 0)
-                self.assertEqual(data['count'], 0)
+
+                # Recent tracks uses different response format (Story 9)
+                if 'recent-tracks' in url:
+                    self.assertEqual(data['count'], 0)
+                    self.assertIn('has_next', data)
+                    self.assertIn('has_previous', data)
+                else:
+                    self.assertEqual(data['count'], 0)
 
 
 class SerializerTestCase(TestCase):
