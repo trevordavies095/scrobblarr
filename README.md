@@ -67,7 +67,7 @@ scrobblarr/
 └── .env           # Environment configuration
 ```
 
-## Story 1 & 2 Completion Status
+## Story 1, 2 & 3 Completion Status
 
 ✅ **Story 1 - Django Project Setup (Complete):**
 - [x] Django project created with name "scrobblarr"
@@ -91,9 +91,44 @@ scrobblarr/
 - [x] MBID validation with proper UUID format checking
 - [x] Comprehensive model tests covering all functionality
 
+✅ **Story 3 - CSV Import Command (Complete):**
+- [x] Django management command `python manage.py import_scrobbles <csv_file>`
+- [x] Parses CSV with expected columns: uts, utc_time, artist, artist_mbid, album, album_mbid, track, track_mbid
+- [x] Creates Artist, Album, Track, and Scrobble records with proper relationships
+- [x] Uses MBID when available, text matching as fallback
+- [x] Progress indicator shows import status (every 1000 records)
+- [x] Handles missing MBID values and empty album names gracefully
+- [x] Skips malformed rows with detailed logging and row numbers
+- [x] Reports final import statistics (total imported, skipped, errors)
+- [x] Handles 150k+ records efficiently with bulk operations and batching
+- [x] Command options: --batch-size, --dry-run, --verbose
+- [x] Comprehensive error handling and validation
+- [x] Full test suite covering all import scenarios
+
+## CSV Import Usage
+
+Import your Last.fm scrobble data:
+```bash
+# Basic import
+python manage.py import_scrobbles your_scrobbles.csv
+
+# Test import without saving data
+python manage.py import_scrobbles your_scrobbles.csv --dry-run
+
+# Import with custom batch size and verbose output
+python manage.py import_scrobbles your_scrobbles.csv --batch-size=500 --verbose
+```
+
+Expected CSV format:
+```csv
+uts,utc_time,artist,artist_mbid,album,album_mbid,track,track_mbid
+1640995200,2022-01-01 00:00:00,The Beatles,b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d,Abbey Road,729b68b1-c551-4d38-acc3-e5e1e17e1de8,Come Together,60dfa5ec-84b7-4d30-b1f5-ae5af27a9f29
+```
+
 ## Next Steps
 
 1. Run the setup commands above to complete database initialization
-2. Proceed with Story 3: CSV Import Command
-3. Test the enhanced admin interface functionality
-4. Run model tests: `python manage.py test music.tests`
+2. Import your CSV data using the import_scrobbles command
+3. Explore your data using the Django admin interface
+4. Run tests: `python manage.py test music.tests`
+5. Proceed with Story 4: Data Validation and Integrity

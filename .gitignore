@@ -31,3 +31,7 @@ Thumbs.db
 .coverage
 htmlcov/
 .pytest_cache/
+CLAUDE.md
+scrobbles-merged-clean-v3.csv
+scrobblarr_phase1_stories.md
+CLAUDE.md
