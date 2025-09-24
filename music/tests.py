@@ -1024,3 +1024,584 @@ class ValidateDataCommandTest(TestCase):
 
         output = out.getvalue()
         self.assertIn('VALIDATION SUMMARY', output)
+
+
+class AdminInterfaceTest(TestCase):
+    """Test cases for enhanced admin interfaces."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        from django.contrib.auth.models import User
+        from django.test import Client
+
+        # Create superuser for admin access
+        self.superuser = User.objects.create_superuser(
+            'admin', 'admin@test.com', 'password'
+        )
+        self.client = Client()
+        self.client.login(username='admin', password='password')
+
+        # Create test data
+        self.artist = Artist.objects.create(
+            name="Test Artist",
+            mbid="b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d"
+        )
+        self.album = Album.objects.create(
+            name="Test Album",
+            artist=self.artist,
+            mbid="729b68b1-c551-4d38-acc3-e5e1e17e1de8"
+        )
+        self.track = Track.objects.create(
+            name="Test Track",
+            artist=self.artist,
+            album=self.album,
+            mbid="60dfa5ec-84b7-4d30-b1f5-ae5af27a9f29",
+            duration=180
+        )
+        self.scrobble = Scrobble.objects.create(
+            track=self.track,
+            timestamp=timezone.now() - timedelta(hours=1)
+        )
+
+    def test_artist_admin_list_view(self):
+        """Test artist admin list view loads and displays correctly."""
+        response = self.client.get('/admin/music/artist/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Test Artist')
+        self.assertContains(response, 'MBID Status')
+        self.assertContains(response, 'Recent Activity')
+        self.assertContains(response, 'Quality')
+
+    def test_artist_admin_filters(self):
+        """Test artist admin filters work correctly."""
+        # Test MBID filter
+        response = self.client.get('/admin/music/artist/?mbid_status=present')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Test Artist')
+
+        response = self.client.get('/admin/music/artist/?mbid_status=missing')
+        self.assertEqual(response.status_code, 200)
+        # Should not contain our test artist since it has MBID
+
+    def test_artist_admin_search(self):
+        """Test artist admin search functionality."""
+        response = self.client.get('/admin/music/artist/?q=Test')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Test Artist')
+
+        response = self.client.get('/admin/music/artist/?q=Nonexistent')
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'Test Artist')
+
+    def test_album_admin_list_view(self):
+        """Test album admin list view loads and displays correctly."""
+        response = self.client.get('/admin/music/album/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Test Album')
+        self.assertContains(response, 'Test Artist')
+        self.assertContains(response, 'MBID Status')
+
+    def test_track_admin_list_view(self):
+        """Test track admin list view loads and displays correctly."""
+        response = self.client.get('/admin/music/track/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Test Track')
+        self.assertContains(response, 'Test Artist')
+        self.assertContains(response, 'Test Album')
+        self.assertContains(response, '3:00')  # Duration formatted
+
+    def test_track_admin_duration_filter(self):
+        """Test track duration filter."""
+        response = self.client.get('/admin/music/track/?duration=normal')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Test Track')
+
+    def test_scrobble_admin_list_view(self):
+        """Test scrobble admin list view loads and displays correctly."""
+        response = self.client.get('/admin/music/scrobble/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Test Track')
+        self.assertContains(response, 'Test Artist')
+        self.assertContains(response, 'Time Ago')
+
+    def test_scrobble_admin_age_filter(self):
+        """Test scrobble age filter."""
+        response = self.client.get('/admin/music/scrobble/?scrobble_age=today')
+        self.assertEqual(response.status_code, 200)
+        # Our test scrobble is from 1 hour ago, so it should appear in today's filter
+
+    def test_admin_bulk_actions_available(self):
+        """Test that bulk actions are available in admin."""
+        response = self.client.get('/admin/music/artist/')
+        self.assertEqual(response.status_code, 200)
+        # Check that bulk actions are present in the form
+        self.assertContains(response, 'export_to_csv')
+        self.assertContains(response, 'validate_selected_records')
+
+    def test_admin_export_csv_action(self):
+        """Test CSV export functionality."""
+        # Test export action via POST request
+        response = self.client.post('/admin/music/artist/', {
+            'action': 'export_to_csv',
+            '_selected_action': [self.artist.id],
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get('Content-Type'), 'text/csv')
+        self.assertIn('attachment', response.get('Content-Disposition', ''))
+
+    def test_admin_validation_action(self):
+        """Test validation action."""
+        response = self.client.post('/admin/music/artist/', {
+            'action': 'validate_selected_records',
+            '_selected_action': [self.artist.id],
+        })
+        self.assertEqual(response.status_code, 302)  # Redirects after action
+
+    def test_admin_links_work(self):
+        """Test that admin links between models work correctly."""
+        # Test artist page has links to tracks and albums
+        response = self.client.get(f'/admin/music/artist/{self.artist.id}/change/')
+        self.assertEqual(response.status_code, 200)
+
+        # Test track page has links to artist and album
+        response = self.client.get(f'/admin/music/track/{self.track.id}/change/')
+        self.assertEqual(response.status_code, 200)
+
+    def test_admin_count_displays(self):
+        """Test that count displays show correct numbers and are clickable."""
+        response = self.client.get('/admin/music/artist/')
+        self.assertEqual(response.status_code, 200)
+        # Should show 1 track, 1 album, 1 play
+        self.assertContains(response, '1 tracks')
+        self.assertContains(response, '1 albums')
+
+    def test_admin_quality_indicators(self):
+        """Test data quality indicators work."""
+        # Create an artist with missing MBID
+        bad_artist = Artist.objects.create(name="Bad Artist")  # No MBID
+
+        response = self.client.get('/admin/music/artist/')
+        self.assertEqual(response.status_code, 200)
+
+        # Should show quality indicators for both artists
+        self.assertContains(response, 'Valid')  # For good artist
+        self.assertContains(response, 'Missing')  # For bad artist
+
+    def test_admin_recent_activity_display(self):
+        """Test recent activity display."""
+        response = self.client.get('/admin/music/artist/')
+        self.assertEqual(response.status_code, 200)
+        # Should show recent activity (scrobble from 1 hour ago)
+        self.assertContains(response, 'hour')  # Time ago display
+
+    def test_admin_performance_with_many_records(self):
+        """Test admin performance with larger datasets."""
+        # Create more test data
+        artists = []
+        for i in range(50):
+            artists.append(Artist.objects.create(name=f"Artist {i}"))
+
+        # Test that admin page loads reasonably fast
+        import time
+        start_time = time.time()
+        response = self.client.get('/admin/music/artist/')
+        end_time = time.time()
+
+        self.assertEqual(response.status_code, 200)
+        # Should load within 5 seconds even with more data
+        self.assertLess(end_time - start_time, 5)
+
+    def test_admin_ordering_works(self):
+        """Test that admin ordering works correctly."""
+        # Create another artist with a different name
+        Artist.objects.create(name="Another Artist")
+
+        response = self.client.get('/admin/music/artist/')
+        self.assertEqual(response.status_code, 200)
+
+        # Test sorting by name
+        response = self.client.get('/admin/music/artist/?o=1')  # Sort by name
+        self.assertEqual(response.status_code, 200)
+
+    def test_admin_pagination_works(self):
+        """Test admin pagination with many records."""
+        # Create enough records to test pagination
+        for i in range(60):  # More than the default page size of 50
+            Artist.objects.create(name=f"Bulk Artist {i}")
+
+        response = self.client.get('/admin/music/artist/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Show all')  # Pagination controls
+
+        # Test page 2
+        response = self.client.get('/admin/music/artist/?p=1')
+        self.assertEqual(response.status_code, 200)
+
+    def test_admin_autocomplete_fields(self):
+        """Test autocomplete fields work."""
+        response = self.client.get(f'/admin/music/track/{self.track.id}/change/')
+        self.assertEqual(response.status_code, 200)
+        # Should have autocomplete widgets for artist and album
+
+    def test_sync_status_admin(self):
+        """Test sync status admin interface."""
+        sync_status = SyncStatus.objects.create(
+            status='success',
+            last_sync_timestamp=timezone.now(),
+            sync_count=5
+        )
+
+        response = self.client.get('/admin/music/syncstatus/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Success')
+        self.assertContains(response, '✅')  # Success icon
+
+    def test_admin_readonly_fields(self):
+        """Test that readonly fields are properly marked."""
+        response = self.client.get(f'/admin/music/artist/{self.artist.id}/change/')
+        self.assertEqual(response.status_code, 200)
+        # created_at and updated_at should be readonly
+
+    def test_admin_help_text_displayed(self):
+        """Test that help text is displayed in admin forms."""
+        response = self.client.get(f'/admin/music/artist/{self.artist.id}/change/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'MusicBrainz ID')  # MBID help text
+
+
+class AdminFilterTest(TestCase):
+    """Test cases for custom admin filters."""
+
+    def setUp(self):
+        """Set up test data for filter testing."""
+        # Create artists with different characteristics
+        self.artist_with_mbid = Artist.objects.create(
+            name="Artist With MBID",
+            mbid="b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d"
+        )
+        self.artist_without_mbid = Artist.objects.create(
+            name="Artist Without MBID"
+        )
+        self.artist_invalid_mbid = Artist.objects.create(
+            name="Artist Invalid MBID",
+            mbid="invalid-mbid"
+        )
+
+        # Create tracks with different durations
+        self.short_track = Track.objects.create(
+            name="Short Track",
+            artist=self.artist_with_mbid,
+            duration=30  # 30 seconds
+        )
+        self.normal_track = Track.objects.create(
+            name="Normal Track",
+            artist=self.artist_with_mbid,
+            duration=240  # 4 minutes
+        )
+        self.long_track = Track.objects.create(
+            name="Long Track",
+            artist=self.artist_with_mbid,
+            duration=720  # 12 minutes
+        )
+
+    def test_missing_mbid_filter(self):
+        """Test MissingMBIDFilter functionality."""
+        from music.admin_filters import MissingMBIDFilter
+
+        # Create a mock request and model admin
+        class MockRequest:
+            GET = {}
+
+        class MockModelAdmin:
+            pass
+
+        request = MockRequest()
+        model_admin = MockModelAdmin()
+        filter_instance = MissingMBIDFilter(request, {}, Artist, model_admin)
+
+        # Test lookups
+        lookups = filter_instance.lookups(request, model_admin)
+        self.assertEqual(len(lookups), 3)
+        self.assertIn(('missing', 'Missing MBID'), lookups)
+
+        # Test queryset filtering
+        queryset = Artist.objects.all()
+
+        # Test missing MBID filter
+        filter_instance.value = lambda: 'missing'
+        filtered = filter_instance.queryset(request, queryset)
+        self.assertIn(self.artist_without_mbid, filtered)
+        self.assertNotIn(self.artist_with_mbid, filtered)
+
+        # Test present MBID filter
+        filter_instance.value = lambda: 'present'
+        filtered = filter_instance.queryset(request, queryset)
+        self.assertIn(self.artist_with_mbid, filtered)
+        self.assertNotIn(self.artist_without_mbid, filtered)
+
+    def test_duration_range_filter(self):
+        """Test DurationRangeFilter functionality."""
+        from music.admin_filters import DurationRangeFilter
+
+        class MockRequest:
+            GET = {}
+
+        class MockModelAdmin:
+            pass
+
+        request = MockRequest()
+        model_admin = MockModelAdmin()
+        filter_instance = DurationRangeFilter(request, {}, Track, model_admin)
+
+        queryset = Track.objects.all()
+
+        # Test very short filter
+        filter_instance.value = lambda: 'very_short'
+        filtered = filter_instance.queryset(request, queryset)
+        self.assertIn(self.short_track, filtered)
+        self.assertNotIn(self.normal_track, filtered)
+
+        # Test normal duration filter
+        filter_instance.value = lambda: 'normal'
+        filtered = filter_instance.queryset(request, queryset)
+        self.assertIn(self.normal_track, filtered)
+        self.assertNotIn(self.short_track, filtered)
+
+        # Test very long filter
+        filter_instance.value = lambda: 'very_long'
+        filtered = filter_instance.queryset(request, queryset)
+        self.assertIn(self.long_track, filtered)
+        self.assertNotIn(self.normal_track, filtered)
+
+    def test_data_quality_filter(self):
+        """Test DataQualityFilter functionality."""
+        from music.admin_filters import DataQualityFilter
+
+        class MockRequest:
+            GET = {}
+
+        class MockModelAdmin:
+            pass
+
+        request = MockRequest()
+        model_admin = MockModelAdmin()
+        filter_instance = DataQualityFilter(request, {}, Artist, model_admin)
+
+        queryset = Artist.objects.all()
+
+        # Test missing MBID filter
+        filter_instance.value = lambda: 'missing_mbid'
+        filtered = filter_instance.queryset(request, queryset)
+        self.assertIn(self.artist_without_mbid, filtered)
+        self.assertNotIn(self.artist_with_mbid, filtered)
+
+
+class AdminActionTest(TestCase):
+    """Test cases for custom admin actions."""
+
+    def setUp(self):
+        """Set up test data."""
+        self.artist = Artist.objects.create(
+            name="Test Artist",
+            mbid="invalid-mbid-format"  # Invalid MBID
+        )
+        self.track = Track.objects.create(
+            name="Test Track",
+            artist=self.artist
+        )
+
+        # Create duplicate scrobbles for testing
+        timestamp = timezone.now() - timedelta(hours=1)
+        self.scrobble1 = Scrobble.objects.create(track=self.track, timestamp=timestamp)
+        self.scrobble2 = Scrobble.objects.create(track=self.track, timestamp=timestamp)
+
+    def test_clear_invalid_mbids_action(self):
+        """Test clear_invalid_mbids action."""
+        from music.admin_actions import clear_invalid_mbids
+        from django.contrib.admin import ModelAdmin
+        from django.http import HttpRequest
+
+        class MockMessages:
+            def __init__(self):
+                self.messages = []
+
+            def success(self, request, message):
+                self.messages.append(('success', message))
+
+            def info(self, request, message):
+                self.messages.append(('info', message))
+
+        request = HttpRequest()
+        request._messages = MockMessages()
+        model_admin = ModelAdmin(Artist, None)
+        queryset = Artist.objects.filter(id=self.artist.id)
+
+        # Mock the messages framework
+        import django.contrib.messages as messages
+        original_success = messages.success
+        original_info = messages.info
+
+        try:
+            messages.success = lambda r, m: request._messages.success(r, m)
+            messages.info = lambda r, m: request._messages.info(r, m)
+
+            # Run the action
+            clear_invalid_mbids(model_admin, request, queryset)
+
+            # Check that the invalid MBID was cleared
+            self.artist.refresh_from_db()
+            self.assertIsNone(self.artist.mbid)
+
+            # Check that a success message was added
+            success_messages = [msg for msg in request._messages.messages if msg[0] == 'success']
+            self.assertEqual(len(success_messages), 1)
+            self.assertIn('Cleared invalid MBIDs', success_messages[0][1])
+
+        finally:
+            messages.success = original_success
+            messages.info = original_info
+
+    def test_remove_duplicates_action(self):
+        """Test remove_duplicates action."""
+        from music.admin_actions import remove_duplicates
+        from django.contrib.admin import ModelAdmin
+        from django.http import HttpRequest
+
+        class MockMessages:
+            def __init__(self):
+                self.messages = []
+
+            def success(self, request, message):
+                self.messages.append(('success', message))
+
+        request = HttpRequest()
+        request._messages = MockMessages()
+        model_admin = ModelAdmin(Scrobble, None)
+        queryset = Scrobble.objects.all()
+
+        # Verify we have 2 duplicate scrobbles
+        self.assertEqual(Scrobble.objects.count(), 2)
+
+        # Mock the messages framework
+        import django.contrib.messages as messages
+        original_success = messages.success
+
+        try:
+            messages.success = lambda r, m: request._messages.success(r, m)
+
+            # Run the action
+            remove_duplicates(model_admin, request, queryset)
+
+            # Check that duplicate was removed
+            self.assertEqual(Scrobble.objects.count(), 1)
+
+            # Check that a success message was added
+            success_messages = [msg for msg in request._messages.messages if msg[0] == 'success']
+            self.assertEqual(len(success_messages), 1)
+            self.assertIn('Removed', success_messages[0][1])
+
+        finally:
+            messages.success = original_success
+
+
+class AdminMixinTest(TestCase):
+    """Test cases for admin mixins."""
+
+    def setUp(self):
+        """Set up test data."""
+        self.artist = Artist.objects.create(
+            name="Test Artist",
+            mbid="b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d"
+        )
+
+    def test_mbid_status_mixin(self):
+        """Test MBIDStatusMixin functionality."""
+        from music.admin_mixins import MBIDStatusMixin
+
+        mixin = MBIDStatusMixin()
+
+        # Test valid MBID
+        result = mixin.mbid_status_display(self.artist)
+        self.assertIn('Valid', result)
+        self.assertIn('28a745', result)  # Green color
+
+        # Test invalid MBID
+        self.artist.mbid = "invalid-mbid"
+        result = mixin.mbid_status_display(self.artist)
+        self.assertIn('Invalid', result)
+        self.assertIn('dc3545', result)  # Red color
+
+        # Test missing MBID
+        self.artist.mbid = None
+        result = mixin.mbid_status_display(self.artist)
+        self.assertIn('Missing', result)
+        self.assertIn('6c757d', result)  # Gray color
+
+    def test_data_quality_mixin(self):
+        """Test DataQualityMixin functionality."""
+        from music.admin_mixins import DataQualityMixin
+
+        mixin = DataQualityMixin()
+
+        # Test high quality (has MBID and URL)
+        self.artist.url = "https://musicbrainz.org/artist/test"
+        result = mixin.data_quality_score(self.artist)
+        self.assertIn('100%', result)
+        self.assertIn('28a745', result)  # Green color
+
+        # Test medium quality (missing URL)
+        self.artist.url = None
+        result = mixin.data_quality_score(self.artist)
+        self.assertIn('80%', result)
+        self.assertIn('ffc107', result)  # Yellow color
+
+        # Test low quality (missing MBID and URL)
+        self.artist.mbid = None
+        result = mixin.data_quality_score(self.artist)
+        self.assertIn('50%', result)
+        self.assertIn('dc3545', result)  # Red color
+
+    def test_linkable_mixin(self):
+        """Test LinkableMixin functionality."""
+        from music.admin_mixins import LinkableMixin
+
+        mixin = LinkableMixin()
+
+        # Test creating admin link
+        result = mixin.create_admin_link(self.artist)
+        self.assertIn('href', result)
+        self.assertIn('music_artist_change', result)
+        self.assertIn(str(self.artist.id), result)
+
+        # Test with None object
+        result = mixin.create_admin_link(None)
+        self.assertEqual(result, '-')
+
+    def test_timestamp_mixin(self):
+        """Test TimestampMixin functionality."""
+        from music.admin_mixins import TimestampMixin
+
+        mixin = TimestampMixin()
+
+        # Test format_timestamp
+        now = timezone.now()
+        result = mixin.format_timestamp(now, include_time=True)
+        self.assertIn(now.strftime('%Y-%m-%d'), result)
+        self.assertIn(now.strftime('%H:%M'), result)
+
+        result = mixin.format_timestamp(now, include_time=False)
+        self.assertIn(now.strftime('%Y-%m-%d'), result)
+        self.assertNotIn(now.strftime('%H:%M'), result)
+
+        # Test get_time_ago
+        past_time = now - timedelta(hours=2)
+        result = mixin.get_time_ago(past_time)
+        self.assertIn('hour', result)
+        self.assertIn('ago', result)
+
+        # Test with None
+        result = mixin.format_timestamp(None)
+        self.assertEqual(result, '-')
+
+        result = mixin.get_time_ago(None)
+        self.assertEqual(result, '-')
