@@ -44,12 +44,15 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'core.middleware.SecurityMiddleware',
+    'core.middleware.LoggingMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'core.middleware.ErrorHandlingMiddleware',
 ]
 
 ROOT_URLCONF = 'scrobblarr.urls'
@@ -168,43 +171,151 @@ LOGGING = {
     'disable_existing_loggers': False,
     'formatters': {
         'verbose': {
-            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'format': '{levelname} {asctime} {name} {module} {funcName}:{lineno} [{process:d}:{thread:d}] {message}',
             'style': '{',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
         },
         'simple': {
-            'format': '{levelname} {message}',
+            'format': '{levelname} {asctime} {name} {message}',
             'style': '{',
+            'datefmt': '%H:%M:%S',
+        },
+        'json': {
+            'format': '{{"timestamp": "{asctime}", "level": "{levelname}", "logger": "{name}", "module": "{module}", "function": "{funcName}", "line": {lineno}, "process": {process}, "thread": {thread}, "message": "{message}"}}',
+            'style': '{',
+            'datefmt': '%Y-%m-%dT%H:%M:%S',
+        },
+        'error': {
+            'format': '{levelname} {asctime} {name} {module} {funcName}:{lineno} [{process:d}:{thread:d}] {message}',
+            'style': '{',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
+        },
+    },
+    'filters': {
+        'require_debug_false': {
+            '()': 'django.utils.log.RequireDebugFalse',
+        },
+        'require_debug_true': {
+            '()': 'django.utils.log.RequireDebugTrue',
         },
     },
     'handlers': {
-        'file': {
-            'level': 'INFO',
-            'class': 'logging.FileHandler',
-            'filename': BASE_DIR / 'logs' / 'scrobblarr.log',
-            'formatter': 'verbose',
-        },
         'console': {
             'level': 'DEBUG',
             'class': 'logging.StreamHandler',
             'formatter': 'simple',
+            'filters': ['require_debug_true'],
+        },
+        'console_prod': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+            'filters': ['require_debug_false'],
+        },
+        'file_info': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'scrobblarr.log',
+            'maxBytes': 10 * 1024 * 1024,  # 10MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },
+        'file_error': {
+            'level': 'ERROR',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'scrobblarr_error.log',
+            'maxBytes': 10 * 1024 * 1024,  # 10MB
+            'backupCount': 5,
+            'formatter': 'error',
+        },
+        'file_json': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'scrobblarr.json',
+            'maxBytes': 10 * 1024 * 1024,  # 10MB
+            'backupCount': 3,
+            'formatter': 'json',
+        },
+        'import_file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'import.log',
+            'maxBytes': 50 * 1024 * 1024,  # 50MB
+            'backupCount': 3,
+            'formatter': 'verbose',
+        },
+        'api_file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'api.log',
+            'maxBytes': 20 * 1024 * 1024,  # 20MB
+            'backupCount': 3,
+            'formatter': 'verbose',
+        },
+        'null': {
+            'class': 'logging.NullHandler',
         },
     },
     'loggers': {
         'django': {
-            'handlers': ['file', 'console'],
+            'handlers': ['console', 'console_prod', 'file_info'],
             'level': config('LOG_LEVEL', default='INFO'),
             'propagate': True,
         },
-        'music': {
-            'handlers': ['file', 'console'],
+        'django.request': {
+            'handlers': ['file_error', 'console', 'console_prod'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+        'django.security': {
+            'handlers': ['file_error', 'console', 'console_prod'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+        'django.db.backends': {
+            'handlers': ['null'],
             'level': 'DEBUG',
+            'propagate': False,
+        },
+        'music': {
+            'handlers': ['console', 'console_prod', 'file_info', 'file_error'],
+            'level': config('MUSIC_LOG_LEVEL', default='DEBUG'),
+            'propagate': False,
+        },
+        'music.import': {
+            'handlers': ['console', 'console_prod', 'import_file', 'file_error'],
+            'level': 'INFO',
             'propagate': False,
         },
         'stats': {
-            'handlers': ['file', 'console'],
-            'level': 'DEBUG',
+            'handlers': ['console', 'console_prod', 'file_info', 'file_error'],
+            'level': config('STATS_LOG_LEVEL', default='DEBUG'),
             'propagate': False,
         },
+        'stats.api': {
+            'handlers': ['api_file', 'file_error'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'core': {
+            'handlers': ['console', 'console_prod', 'file_info', 'file_error'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'scrobblarr': {
+            'handlers': ['console', 'console_prod', 'file_info', 'file_error', 'file_json'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django_q': {
+            'handlers': ['console', 'console_prod', 'file_info', 'file_error'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+    'root': {
+        'level': 'WARNING',
+        'handlers': ['console', 'console_prod', 'file_error'],
     },
 }
 

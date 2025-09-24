@@ -1,4 +1,5 @@
 import csv
+import logging
 import os
 from datetime import datetime
 from typing import Dict, Any, Optional, Tuple
@@ -9,10 +10,15 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from music.models import Artist, Album, Track, Scrobble
+from core.exceptions import ImportError, DataValidationError
 
 
 class Command(BaseCommand):
     help = 'Import scrobble data from a CSV file'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.logger = logging.getLogger('music.import')
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -43,15 +49,31 @@ class Command(BaseCommand):
         dry_run = options['dry_run']
         verbose = options['verbose']
 
+        self.logger.info(
+            f"Starting import command",
+            extra={
+                'csv_file': csv_file,
+                'batch_size': batch_size,
+                'dry_run': dry_run,
+                'verbose': verbose
+            }
+        )
+
         # Validate file exists and is readable
         if not os.path.exists(csv_file):
-            raise CommandError(f'File "{csv_file}" does not exist.')
+            error_msg = f'File "{csv_file}" does not exist.'
+            self.logger.error(error_msg)
+            raise CommandError(error_msg)
 
         if not os.path.isfile(csv_file):
-            raise CommandError(f'"{csv_file}" is not a file.')
+            error_msg = f'"{csv_file}" is not a file.'
+            self.logger.error(error_msg)
+            raise CommandError(error_msg)
 
         if not os.access(csv_file, os.R_OK):
-            raise CommandError(f'File "{csv_file}" is not readable.')
+            error_msg = f'File "{csv_file}" is not readable.'
+            self.logger.error(error_msg)
+            raise CommandError(error_msg)
 
         # Initialize counters
         total_processed = 0
@@ -136,9 +158,14 @@ class Command(BaseCommand):
 
                     except Exception as e:
                         total_errors += 1
-                        self.stderr.write(
-                            f'Error processing row {row_num}: {str(e)}'
-                        )
+                        error_msg = f'Error processing row {row_num}: {str(e)}'
+                        self.stderr.write(error_msg)
+                        self.logger.error(error_msg, extra={
+                            'row_number': row_num,
+                            'exception': str(e),
+                            'exception_type': type(e).__name__,
+                            'row_data': row if verbose else None
+                        })
                         if verbose:
                             self.stderr.write(f'Row data: {row}')
 
@@ -152,7 +179,13 @@ class Command(BaseCommand):
                     total_errors += errors
 
         except Exception as e:
-            raise CommandError(f'Error reading CSV file: {str(e)}')
+            error_msg = f'Error reading CSV file: {str(e)}'
+            self.logger.critical(error_msg, extra={
+                'csv_file': csv_file,
+                'exception': str(e),
+                'exception_type': type(e).__name__
+            })
+            raise CommandError(error_msg)
 
         # Final report
         self.stdout.write(self.style.SUCCESS('\n' + '=' * 50))
@@ -162,6 +195,20 @@ class Command(BaseCommand):
         self.stdout.write(f'Successfully imported: {total_imported:,}')
         self.stdout.write(f'Skipped (invalid data): {total_skipped:,}')
         self.stdout.write(f'Errors encountered: {total_errors:,}')
+
+        # Log final summary
+        self.logger.info(
+            f"Import command completed",
+            extra={
+                'csv_file': csv_file,
+                'dry_run': dry_run,
+                'total_processed': total_processed,
+                'total_imported': total_imported,
+                'total_skipped': total_skipped,
+                'total_errors': total_errors,
+                'success_rate': (total_imported / total_processed * 100) if total_processed > 0 else 0
+            }
+        )
 
         if dry_run:
             self.stdout.write(
@@ -176,15 +223,21 @@ class Command(BaseCommand):
         """Process and validate a single CSV row."""
         # Check for required fields
         if not row.get('artist', '').strip():
-            self.stderr.write(f'Row {row_num}: Missing artist name')
+            error_msg = f'Row {row_num}: Missing artist name'
+            self.stderr.write(error_msg)
+            self.logger.warning(error_msg, extra={'row_number': row_num, 'validation_error': 'missing_artist'})
             return None
 
         if not row.get('track', '').strip():
-            self.stderr.write(f'Row {row_num}: Missing track name')
+            error_msg = f'Row {row_num}: Missing track name'
+            self.stderr.write(error_msg)
+            self.logger.warning(error_msg, extra={'row_number': row_num, 'validation_error': 'missing_track'})
             return None
 
         if not row.get('uts', '').strip():
-            self.stderr.write(f'Row {row_num}: Missing timestamp')
+            error_msg = f'Row {row_num}: Missing timestamp'
+            self.stderr.write(error_msg)
+            self.logger.warning(error_msg, extra={'row_number': row_num, 'validation_error': 'missing_timestamp'})
             return None
 
         # Convert unix timestamp to datetime
@@ -195,15 +248,34 @@ class Command(BaseCommand):
             # Validate timestamp is reasonable (not in future, not before 1970)
             now = timezone.now()
             if timestamp > now:
-                self.stderr.write(f'Row {row_num}: Timestamp is in the future')
+                error_msg = f'Row {row_num}: Timestamp is in the future'
+                self.stderr.write(error_msg)
+                self.logger.warning(error_msg, extra={
+                    'row_number': row_num,
+                    'validation_error': 'future_timestamp',
+                    'timestamp': timestamp.isoformat()
+                })
                 return None
 
             if timestamp.year < 1970:
-                self.stderr.write(f'Row {row_num}: Timestamp is before 1970')
+                error_msg = f'Row {row_num}: Timestamp is before 1970'
+                self.stderr.write(error_msg)
+                self.logger.warning(error_msg, extra={
+                    'row_number': row_num,
+                    'validation_error': 'invalid_timestamp',
+                    'timestamp': timestamp.isoformat()
+                })
                 return None
 
         except (ValueError, OSError) as e:
-            self.stderr.write(f'Row {row_num}: Invalid timestamp "{row.get("uts")}": {e}')
+            error_msg = f'Row {row_num}: Invalid timestamp "{row.get("uts")}": {e}'
+            self.stderr.write(error_msg)
+            self.logger.error(error_msg, extra={
+                'row_number': row_num,
+                'validation_error': 'timestamp_parse_error',
+                'raw_timestamp': row.get('uts'),
+                'exception': str(e)
+            })
             return None
 
         # Clean and validate MBID fields (should be UUID format or empty)

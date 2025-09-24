@@ -1,4 +1,5 @@
 import json
+import logging
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Tuple
@@ -10,6 +11,7 @@ from django.core.validators import URLValidator, ValidationError as DjangoValida
 from django.db.models import Count, Q
 
 from music.models import Artist, Album, Track, Scrobble, mbid_validator
+from core.exceptions import DataValidationError
 
 
 class ValidationIssue:
@@ -47,6 +49,7 @@ class Command(BaseCommand):
         self.issues = []
         self.fixes_applied = []
         self.stats = defaultdict(int)
+        self.logger = logging.getLogger('music.validation')
 
     def add_arguments(self, parser):
         parser.add_argument(

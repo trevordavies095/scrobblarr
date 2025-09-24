@@ -1,3 +1,4 @@
+import logging
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
@@ -5,8 +6,10 @@ from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import render, get_object_or_404
 from django.db.models import Count, Q, Max
 from django.utils import timezone
+from django.http import Http404
 from datetime import timedelta
 from music.models import Artist, Album, Track, Scrobble
+from core.exceptions import APIError, DataValidationError
 from .serializers import (
     ArtistListSerializer, ArtistDetailSerializer,
     AlbumListSerializer, AlbumDetailSerializer,
@@ -27,6 +30,10 @@ class StatsViewSet(viewsets.ViewSet):
     """
     pagination_class = StandardResultsSetPagination
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.logger = logging.getLogger('stats.api')
+
     def get_time_filter(self, request):
         """Get time filter based on period parameter."""
         period = request.query_params.get('period', '30d')
@@ -39,6 +46,18 @@ class StatsViewSet(viewsets.ViewSet):
             '365d': now - timedelta(days=365),
             'all': None
         }
+
+        if period not in time_filters:
+            self.logger.warning(
+                f"Invalid period parameter provided: {period}",
+                extra={
+                    'period': period,
+                    'valid_periods': list(time_filters.keys()),
+                    'request_path': request.path
+                }
+            )
+            # Return default instead of raising error
+            period = '30d'
 
         return time_filters.get(period, time_filters['30d'])
 
@@ -159,26 +178,76 @@ class StatsViewSet(viewsets.ViewSet):
     @action(detail=True)
     def artists(self, request, pk=None):
         """Get artist detail with statistics."""
-        artist = get_object_or_404(Artist.objects.prefetch_related('albums', 'tracks'), pk=pk)
-        serializer = ArtistDetailSerializer(artist)
-        return Response(serializer.data)
+        try:
+            artist = get_object_or_404(Artist.objects.prefetch_related('albums', 'tracks'), pk=pk)
+            self.logger.info(
+                f"Artist detail requested",
+                extra={'artist_id': pk, 'artist_name': artist.name}
+            )
+            serializer = ArtistDetailSerializer(artist)
+            return Response(serializer.data)
+        except Http404:
+            self.logger.warning(f"Artist not found", extra={'artist_id': pk})
+            raise APIError(f"Artist with ID {pk} not found", status_code=404)
+        except Exception as e:
+            self.logger.error(
+                f"Error retrieving artist detail",
+                extra={'artist_id': pk, 'exception': str(e)},
+                exc_info=True
+            )
+            raise APIError("Error retrieving artist data", status_code=500)
 
     @action(detail=True)
     def albums(self, request, pk=None):
         """Get album detail with track listings."""
-        album = get_object_or_404(
-            Album.objects.select_related('artist').prefetch_related('tracks'),
-            pk=pk
-        )
-        serializer = AlbumDetailSerializer(album)
-        return Response(serializer.data)
+        try:
+            album = get_object_or_404(
+                Album.objects.select_related('artist').prefetch_related('tracks'),
+                pk=pk
+            )
+            self.logger.info(
+                f"Album detail requested",
+                extra={'album_id': pk, 'album_name': album.name, 'artist_name': album.artist.name}
+            )
+            serializer = AlbumDetailSerializer(album)
+            return Response(serializer.data)
+        except Http404:
+            self.logger.warning(f"Album not found", extra={'album_id': pk})
+            raise APIError(f"Album with ID {pk} not found", status_code=404)
+        except Exception as e:
+            self.logger.error(
+                f"Error retrieving album detail",
+                extra={'album_id': pk, 'exception': str(e)},
+                exc_info=True
+            )
+            raise APIError("Error retrieving album data", status_code=500)
 
     @action(detail=True)
     def tracks(self, request, pk=None):
         """Get track detail with scrobble history."""
-        track = get_object_or_404(
-            Track.objects.select_related('artist', 'album').prefetch_related('scrobbles'),
-            pk=pk
-        )
-        serializer = TrackDetailSerializer(track)
-        return Response(serializer.data)
+        try:
+            track = get_object_or_404(
+                Track.objects.select_related('artist', 'album').prefetch_related('scrobbles'),
+                pk=pk
+            )
+            self.logger.info(
+                f"Track detail requested",
+                extra={
+                    'track_id': pk,
+                    'track_name': track.name,
+                    'artist_name': track.artist.name,
+                    'album_name': track.album.name if track.album else None
+                }
+            )
+            serializer = TrackDetailSerializer(track)
+            return Response(serializer.data)
+        except Http404:
+            self.logger.warning(f"Track not found", extra={'track_id': pk})
+            raise APIError(f"Track with ID {pk} not found", status_code=404)
+        except Exception as e:
+            self.logger.error(
+                f"Error retrieving track detail",
+                extra={'track_id': pk, 'exception': str(e)},
+                exc_info=True
+            )
+            raise APIError("Error retrieving track data", status_code=500)
