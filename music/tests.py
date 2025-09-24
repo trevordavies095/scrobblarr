@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 
 from .models import Artist, Album, Track, Scrobble, SyncStatus
 from .management.commands.import_scrobbles import Command as ImportCommand
+from .management.commands.validate_data import Command as ValidateCommand
 
 
 class ArtistModelTest(TestCase):
@@ -614,3 +615,412 @@ class ImportScrobblesCommandTest(TestCase):
 
         finally:
             os.unlink(csv_file)
+
+
+class ValidateDataCommandTest(TestCase):
+    """Test cases for the validate_data management command."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.command = ValidateCommand()
+
+    def test_no_issues_clean_data(self):
+        """Test validation on clean data with no issues."""
+        # Create clean test data
+        artist = Artist.objects.create(
+            name="Clean Artist",
+            mbid="b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d"
+        )
+        album = Album.objects.create(
+            name="Clean Album",
+            artist=artist,
+            mbid="729b68b1-c551-4d38-acc3-e5e1e17e1de8"
+        )
+        track = Track.objects.create(
+            name="Clean Track",
+            artist=artist,
+            album=album,
+            mbid="60dfa5ec-84b7-4d30-b1f5-ae5af27a9f29",
+            duration=180
+        )
+        Scrobble.objects.create(
+            track=track,
+            timestamp=timezone.now() - timedelta(hours=1)
+        )
+
+        out = StringIO()
+        call_command('validate_data', stdout=out)
+
+        output = out.getvalue()
+        self.assertIn('No data quality issues found!', output)
+
+    def test_orphaned_records_detection(self):
+        """Test detection of orphaned records."""
+        # Create test data
+        artist = Artist.objects.create(name="Test Artist")
+        album = Album.objects.create(name="Test Album", artist=artist)
+        track = Track.objects.create(name="Test Track", artist=artist, album=album)
+
+        # Create another artist for mismatched scenario
+        other_artist = Artist.objects.create(name="Other Artist")
+        other_album = Album.objects.create(name="Other Album", artist=other_artist)
+
+        # Create track with mismatched album (different artist)
+        Track.objects.create(
+            name="Mismatched Track",
+            artist=artist,
+            album=other_album  # This album belongs to different artist
+        )
+
+        out = StringIO()
+        call_command('validate_data', '--category=orphaned', stdout=out)
+
+        output = out.getvalue()
+        self.assertIn('belongs to album', output)
+        self.assertIn('mismatched', output.lower())
+
+    def test_duplicate_scrobbles_detection(self):
+        """Test detection of duplicate scrobbles."""
+        artist = Artist.objects.create(name="Test Artist")
+        track = Track.objects.create(name="Test Track", artist=artist)
+
+        # Create duplicate scrobbles
+        timestamp = timezone.now() - timedelta(hours=1)
+        Scrobble.objects.create(track=track, timestamp=timestamp)
+        Scrobble.objects.create(track=track, timestamp=timestamp)
+        Scrobble.objects.create(track=track, timestamp=timestamp)
+
+        out = StringIO()
+        call_command('validate_data', '--category=duplicates', stdout=out)
+
+        output = out.getvalue()
+        self.assertIn('duplicate scrobbles', output)
+        self.assertIn('3 duplicate', output)
+
+    def test_duplicate_scrobbles_fix(self):
+        """Test fixing duplicate scrobbles."""
+        artist = Artist.objects.create(name="Test Artist")
+        track = Track.objects.create(name="Test Track", artist=artist)
+
+        # Create duplicate scrobbles
+        timestamp = timezone.now() - timedelta(hours=1)
+        Scrobble.objects.create(track=track, timestamp=timestamp)
+        Scrobble.objects.create(track=track, timestamp=timestamp)
+        Scrobble.objects.create(track=track, timestamp=timestamp)
+
+        # Verify 3 scrobbles exist
+        self.assertEqual(Scrobble.objects.count(), 3)
+
+        out = StringIO()
+        call_command('validate_data', '--fix', '--category=duplicates', stdout=out)
+
+        # Should have only 1 scrobble left after fix
+        self.assertEqual(Scrobble.objects.count(), 1)
+
+    def test_missing_data_detection(self):
+        """Test detection of missing critical data."""
+        # This test is tricky because database constraints prevent most issues
+        # We'll test what we can without violating DB constraints
+
+        artist = Artist.objects.create(name="Test Artist")
+        track = Track.objects.create(name="Test Track", artist=artist)
+
+        # Create scrobble without lastfm_reference_id (this is allowed)
+        Scrobble.objects.create(track=track, timestamp=timezone.now())
+
+        out = StringIO()
+        call_command('validate_data', '--category=missing_data', stdout=out)
+
+        # This should run without errors even if no missing data issues are found
+        output = out.getvalue()
+        self.assertTrue(len(output) > 0)
+
+    def test_future_timestamp_detection(self):
+        """Test detection of future timestamps."""
+        artist = Artist.objects.create(name="Test Artist")
+        track = Track.objects.create(name="Test Track", artist=artist)
+
+        # Create scrobble with future timestamp
+        future_time = timezone.now() + timedelta(days=1)
+        Scrobble.objects.create(track=track, timestamp=future_time)
+
+        out = StringIO()
+        call_command('validate_data', '--category=timestamps', stdout=out)
+
+        output = out.getvalue()
+        self.assertIn('future timestamp', output)
+
+    def test_future_timestamp_fix(self):
+        """Test fixing future timestamps."""
+        artist = Artist.objects.create(name="Test Artist")
+        track = Track.objects.create(name="Test Track", artist=artist)
+
+        # Create scrobble with future timestamp
+        future_time = timezone.now() + timedelta(days=1)
+        scrobble = Scrobble.objects.create(track=track, timestamp=future_time)
+
+        out = StringIO()
+        call_command('validate_data', '--fix', '--category=timestamps', stdout=out)
+
+        # Check that timestamp was fixed
+        scrobble.refresh_from_db()
+        self.assertLess(scrobble.timestamp, timezone.now() + timedelta(minutes=1))
+
+    def test_old_timestamp_detection(self):
+        """Test detection of very old timestamps."""
+        artist = Artist.objects.create(name="Test Artist")
+        track = Track.objects.create(name="Test Track", artist=artist)
+
+        # Create scrobble with very old timestamp (before 1970)
+        old_time = datetime(1969, 1, 1, tzinfo=timezone.utc)
+        Scrobble.objects.create(track=track, timestamp=old_time)
+
+        out = StringIO()
+        call_command('validate_data', '--category=timestamps', stdout=out)
+
+        output = out.getvalue()
+        self.assertIn('very old timestamp', output)
+
+    def test_invalid_mbid_detection(self):
+        """Test detection of invalid MBID formats."""
+        # Create artist with invalid MBID (bypassing normal validation)
+        artist = Artist(name="Test Artist", mbid="invalid-mbid-format")
+        artist.save()  # This should work if we bypass full_clean()
+
+        out = StringIO()
+        call_command('validate_data', '--category=data_consistency', stdout=out)
+
+        output = out.getvalue()
+        self.assertIn('invalid MBID format', output)
+
+    def test_invalid_mbid_fix(self):
+        """Test fixing invalid MBID formats."""
+        # Create artist with invalid MBID
+        artist = Artist(name="Test Artist", mbid="invalid-mbid-format")
+        artist.save()
+
+        out = StringIO()
+        call_command('validate_data', '--fix', '--category=data_consistency', stdout=out)
+
+        # Check that MBID was cleared
+        artist.refresh_from_db()
+        self.assertIsNone(artist.mbid)
+
+    def test_invalid_url_detection_and_fix(self):
+        """Test detection and fixing of invalid URLs."""
+        # Create artist with invalid URL
+        artist = Artist(name="Test Artist", url="not-a-valid-url")
+        artist.save()
+
+        out = StringIO()
+        call_command('validate_data', '--fix', '--category=data_consistency', stdout=out)
+
+        # Check that URL was cleared
+        artist.refresh_from_db()
+        self.assertIsNone(artist.url)
+
+    def test_unusual_track_duration_detection(self):
+        """Test detection of unusual track durations."""
+        artist = Artist.objects.create(name="Test Artist")
+
+        # Create track with negative duration
+        Track.objects.create(
+            name="Negative Duration Track",
+            artist=artist,
+            duration=-60
+        )
+
+        # Create track with extremely long duration
+        Track.objects.create(
+            name="Very Long Track",
+            artist=artist,
+            duration=10800  # 3 hours
+        )
+
+        out = StringIO()
+        call_command('validate_data', '--category=data_consistency', stdout=out)
+
+        output = out.getvalue()
+        self.assertIn('unusual duration', output)
+
+    def test_duplicate_artists_detection(self):
+        """Test detection of potential duplicate artists."""
+        # Create artists with same name but different MBIDs
+        Artist.objects.create(
+            name="Duplicate Artist",
+            mbid="b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d"
+        )
+        Artist.objects.create(
+            name="Duplicate Artist",
+            mbid="c20cccfc-cf9e-42e0-be17-e2c3e1d2600e"
+        )
+
+        out = StringIO()
+        call_command('validate_data', '--category=duplicates', stdout=out)
+
+        output = out.getvalue()
+        self.assertIn('appears', output)
+        self.assertIn('different MBIDs', output)
+
+    def test_json_output_format(self):
+        """Test JSON output format."""
+        artist = Artist.objects.create(name="Test Artist")
+        track = Track.objects.create(name="Test Track", artist=artist)
+
+        # Create an issue (future timestamp)
+        future_time = timezone.now() + timedelta(days=1)
+        Scrobble.objects.create(track=track, timestamp=future_time)
+
+        out = StringIO()
+        call_command('validate_data', '--output-format=json', stdout=out)
+
+        output = out.getvalue()
+        import json
+        try:
+            data = json.loads(output)
+            self.assertIn('validation_summary', data)
+            self.assertIn('issues', data)
+            self.assertGreater(data['validation_summary']['total_issues'], 0)
+        except json.JSONDecodeError:
+            self.fail("Output is not valid JSON")
+
+    def test_verbose_output(self):
+        """Test verbose output mode."""
+        artist = Artist.objects.create(name="Test Artist")
+        track = Track.objects.create(name="Test Track", artist=artist)
+
+        # Create an issue
+        future_time = timezone.now() + timedelta(days=1)
+        Scrobble.objects.create(track=track, timestamp=future_time)
+
+        out = StringIO()
+        call_command('validate_data', '--verbose', stdout=out)
+
+        output = out.getvalue()
+        self.assertIn('Checking', output)  # Verbose progress messages
+
+    def test_category_filtering(self):
+        """Test validation with specific category filtering."""
+        artist = Artist.objects.create(name="Test Artist")
+        track = Track.objects.create(name="Test Track", artist=artist)
+
+        # Create multiple types of issues
+        future_time = timezone.now() + timedelta(days=1)
+        Scrobble.objects.create(track=track, timestamp=future_time)
+
+        # Create duplicate scrobbles
+        past_time = timezone.now() - timedelta(hours=1)
+        Scrobble.objects.create(track=track, timestamp=past_time)
+        Scrobble.objects.create(track=track, timestamp=past_time)
+
+        # Test timestamp-only validation
+        out = StringIO()
+        call_command('validate_data', '--category=timestamps', stdout=out)
+        output = out.getvalue()
+        self.assertIn('future timestamp', output)
+        self.assertNotIn('duplicate', output)
+
+        # Test duplicates-only validation
+        out = StringIO()
+        call_command('validate_data', '--category=duplicates', stdout=out)
+        output = out.getvalue()
+        self.assertIn('duplicate', output)
+
+    def test_data_quality_score_calculation(self):
+        """Test data quality score calculation."""
+        # Create some clean data
+        artist = Artist.objects.create(name="Clean Artist")
+        track = Track.objects.create(name="Clean Track", artist=artist)
+        Scrobble.objects.create(
+            track=track,
+            timestamp=timezone.now() - timedelta(hours=1)
+        )
+
+        # Create one issue
+        future_time = timezone.now() + timedelta(days=1)
+        Scrobble.objects.create(track=track, timestamp=future_time)
+
+        out = StringIO()
+        call_command('validate_data', stdout=out)
+
+        output = out.getvalue()
+        self.assertIn('Data Quality Score:', output)
+        self.assertIn('%', output)
+
+    def test_validation_issue_class(self):
+        """Test the ValidationIssue class functionality."""
+        from music.management.commands.validate_data import ValidationIssue
+
+        issue = ValidationIssue(
+            category='test',
+            severity='error',
+            message='Test message',
+            model_type='artist',
+            record_id=1,
+            record_details={'name': 'Test Artist'},
+            fix_available=True
+        )
+
+        issue_dict = issue.to_dict()
+        self.assertEqual(issue_dict['category'], 'test')
+        self.assertEqual(issue_dict['severity'], 'error')
+        self.assertEqual(issue_dict['message'], 'Test message')
+        self.assertEqual(issue_dict['model_type'], 'artist')
+        self.assertEqual(issue_dict['record_id'], 1)
+        self.assertTrue(issue_dict['fix_available'])
+
+    def test_command_initialization(self):
+        """Test command initialization."""
+        command = ValidateCommand()
+        self.assertEqual(len(command.issues), 0)
+        self.assertEqual(len(command.fixes_applied), 0)
+        self.assertIsInstance(command.stats, dict)
+
+    def test_fix_mode_without_fixable_issues(self):
+        """Test fix mode when there are no fixable issues."""
+        # Create clean data
+        artist = Artist.objects.create(name="Test Artist")
+        track = Track.objects.create(name="Test Track", artist=artist)
+        Scrobble.objects.create(track=track, timestamp=timezone.now())
+
+        out = StringIO()
+        call_command('validate_data', '--fix', stdout=out)
+
+        output = out.getvalue()
+        self.assertIn('No data quality issues found', output)
+
+    def test_large_dataset_performance(self):
+        """Test validation performance with larger dataset."""
+        # Create a larger dataset for performance testing
+        artist = Artist.objects.create(name="Performance Test Artist")
+        tracks = []
+
+        # Create 100 tracks
+        for i in range(100):
+            track = Track.objects.create(
+                name=f"Track {i}",
+                artist=artist
+            )
+            tracks.append(track)
+
+        # Create 500 scrobbles
+        base_time = timezone.now() - timedelta(days=30)
+        for i in range(500):
+            Scrobble.objects.create(
+                track=tracks[i % 100],
+                timestamp=base_time + timedelta(minutes=i * 3)
+            )
+
+        import time
+        start_time = time.time()
+
+        out = StringIO()
+        call_command('validate_data', stdout=out)
+
+        end_time = time.time()
+
+        # Should complete within reasonable time (adjust as needed)
+        self.assertLess(end_time - start_time, 30)  # 30 seconds max
+
+        output = out.getvalue()
+        self.assertIn('VALIDATION SUMMARY', output)
