@@ -31,7 +31,10 @@ Thumbs.db
 .coverage
 htmlcov/
 .pytest_cache/
+
+# Project-specific files to ignore
 CLAUDE.md
 scrobbles-merged-clean-v3.csv
 scrobblarr_phase1_stories.md
-CLAUDE.md
+scrobblarr_phase2_stories.md
+STORY8_SUMMARY.md
