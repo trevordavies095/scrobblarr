@@ -33,6 +33,21 @@ class AlbumListSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'mbid', 'url', 'artist_name', 'artist_id', 'track_count', 'scrobble_count', 'last_scrobbled']
 
 
+class TopAlbumsSerializer(serializers.ModelSerializer):
+    """
+    Story 11 compliant serializer for top albums API.
+    Returns album, artist, scrobble_count, mbid format.
+    """
+    album = serializers.CharField(source='name', read_only=True)
+    artist = serializers.CharField(source='artist.name', read_only=True)
+    scrobble_count = serializers.IntegerField(read_only=True)
+    mbid = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = Album
+        fields = ['album', 'artist', 'scrobble_count', 'mbid']
+
+
 class TrackListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for track lists with counts."""
     artist_name = serializers.CharField(source='artist.name', read_only=True)

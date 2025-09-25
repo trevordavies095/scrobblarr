@@ -14,7 +14,8 @@ from .serializers import (
     ArtistListSerializer, ArtistDetailSerializer,
     AlbumListSerializer, AlbumDetailSerializer,
     TrackListSerializer, TrackDetailSerializer,
-    ScrobbleListSerializer, RecentTracksSerializer
+    ScrobbleListSerializer, RecentTracksSerializer,
+    TopAlbumsSerializer
 )
 
 
@@ -80,6 +81,41 @@ class TopArtistsPagination(PageNumberPagination):
 
     def get_paginated_response(self, data):
         """Return Story 10 compliant response format."""
+        period = getattr(self, '_period', 'all')
+        total_scrobbles = getattr(self, '_total_scrobbles', 0)
+
+        return Response({
+            'period': period,
+            'results': data,
+            'count': len(data),
+            'total_scrobbles': total_scrobbles
+        })
+
+
+class TopAlbumsPagination(PageNumberPagination):
+    """
+    Custom pagination for Top Albums API to match Story 11 requirements.
+    """
+    page_size = 10
+    page_size_query_param = 'limit'
+    max_page_size = 100
+
+    def get_page_size(self, request):
+        """Get page size with Story 11 validation (min 1, max 100, default 10)."""
+        if self.page_size_query_param:
+            try:
+                page_size = int(request.query_params[self.page_size_query_param])
+                if page_size < 1:
+                    return 1
+                elif page_size > self.max_page_size:
+                    return self.max_page_size
+                return page_size
+            except (KeyError, ValueError):
+                pass
+        return self.page_size
+
+    def get_paginated_response(self, data):
+        """Return Story 11 compliant response format."""
         period = getattr(self, '_period', 'all')
         total_scrobbles = getattr(self, '_total_scrobbles', 0)
 
@@ -310,30 +346,61 @@ class StatsViewSet(viewsets.ViewSet):
 
     @action(detail=False)
     def top_albums(self, request):
-        """Get top albums by play count with time filtering."""
-        time_filter = self.get_time_filter(request)
+        """Get top albums by play count with time filtering (Story 11 compliant)."""
+        try:
+            time_filter = self.get_time_filter(request)
+            period_display = self.get_period_display(request)
+        except APIError:
+            # Re-raise APIError to return proper HTTP status codes
+            raise
+
+        # Build filter conditions for custom date ranges or single date
+        if isinstance(time_filter, tuple):
+            from_date, to_date = time_filter
+            filter_conditions = Q()
+
+            if from_date:
+                filter_conditions &= Q(tracks__scrobbles__timestamp__gte=from_date)
+            if to_date:
+                filter_conditions &= Q(tracks__scrobbles__timestamp__lte=to_date)
+        else:
+            filter_conditions = Q(tracks__scrobbles__timestamp__gte=time_filter) if time_filter else Q()
 
         albums = Album.objects.select_related('artist').annotate(
             scrobble_count=Count(
                 'tracks__scrobbles',
-                filter=Q(tracks__scrobbles__timestamp__gte=time_filter) if time_filter else Q()
+                filter=filter_conditions
             ),
             track_count=Count('tracks', distinct=True),
             last_scrobbled=Max(
                 'tracks__scrobbles__timestamp',
-                filter=Q(tracks__scrobbles__timestamp__gte=time_filter) if time_filter else Q()
+                filter=filter_conditions
             )
         ).filter(scrobble_count__gt=0).order_by('-scrobble_count')
 
-        paginator = self.pagination_class()
+        # Calculate total scrobbles for period
+        total_scrobbles = Scrobble.objects.filter(
+            **self._build_scrobble_filter(time_filter)
+        ).count()
+
+        paginator = TopAlbumsPagination()
+        paginator._period = period_display
+        paginator._total_scrobbles = total_scrobbles
+
         page = paginator.paginate_queryset(albums, request)
 
         if page is not None:
-            serializer = AlbumListSerializer(page, many=True)
+            serializer = TopAlbumsSerializer(page, many=True)
             return paginator.get_paginated_response(serializer.data)
 
-        serializer = AlbumListSerializer(albums, many=True)
-        return Response(serializer.data)
+        # Fallback for non-paginated response (shouldn't happen with pagination)
+        serializer = TopAlbumsSerializer(albums, many=True)
+        return Response({
+            'period': period_display,
+            'results': serializer.data,
+            'count': len(serializer.data),
+            'total_scrobbles': total_scrobbles
+        })
 
     @action(detail=False)
     def top_tracks(self, request):
