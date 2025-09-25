@@ -2,6 +2,7 @@
 Core views for Scrobblarr application including health checks and monitoring.
 """
 import logging
+import requests
 import time
 from datetime import datetime, timedelta
 from django.shortcuts import render
@@ -421,7 +422,6 @@ def top_artists(request):
     """
     Top artists page with time period selector and dynamic filtering.
     """
-    import requests
     from datetime import datetime, timedelta
     from django.core.paginator import Paginator
 
@@ -601,11 +601,38 @@ def _export_top_albums_csv(albums_data, period_display):
     return response
 
 
+def _export_top_tracks_csv(tracks_data, period_display):
+    """
+    Export top tracks to CSV format.
+    """
+    import csv
+    from django.http import HttpResponse
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="top_tracks_{period_display.lower().replace(" ", "_")}_{timezone.now().strftime("%Y%m%d_%H%M%S")}.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow(['Rank', 'Track', 'Artist', 'Album', 'Scrobbles', 'Percentage', 'First Scrobble', 'Last Scrobble'])
+
+    for track in tracks_data:
+        writer.writerow([
+            track['rank'],
+            track['name'],
+            track['artist_name'],
+            track['album_name'] or 'Unknown Album',
+            track['scrobble_count'],
+            f"{track['percentage']}%",
+            track.get('first_scrobble', ''),
+            track.get('last_scrobble', '')
+        ])
+
+    return response
+
+
 def top_albums(request):
     """
     Top albums page with time period selector and dynamic filtering.
     """
-    import requests
     from datetime import datetime, timedelta
     from django.core.paginator import Paginator
 
@@ -762,19 +789,162 @@ def top_albums(request):
 
 def top_tracks(request):
     """
-    Top tracks page (placeholder for Phase 3).
+    Top tracks page with time period filtering and CSV export (Story 24 implementation).
     """
+    import requests  # Local import as backup
+    start_time = timezone.now()
+
+    # Extract and validate parameters
+    time_period = request.GET.get('period', 'all').strip().lower()
+    limit = request.GET.get('limit', '25').strip()
+    export_format = request.GET.get('export', '').strip().lower()
+
+    # Validate time period parameter
+    valid_periods = ['7d', '30d', '90d', '180d', '365d', 'all']
+    if time_period not in valid_periods:
+        time_period = 'all'
+
+    # Validate limit parameter
+    try:
+        limit = int(limit)
+        if limit not in [10, 25, 50, 100]:
+            limit = 25
+    except (ValueError, TypeError):
+        limit = 25
+
+    logger.info("Loading top tracks page", extra={
+        'period': time_period,
+        'limit': limit,
+        'export_format': export_format
+    })
+
+    try:
+        # Build API request to existing stats endpoint
+        api_url = f"http://127.0.0.1:8000/api/top-tracks/"
+        api_params = {
+            'limit': limit,
+        }
+
+        # Add time period if not all-time
+        if time_period != 'all':
+            api_params['period'] = time_period
+
+        # Make API request with timeout
+        api_response = requests.get(api_url, params=api_params, timeout=10)
+
+        if api_response.status_code == 200:
+            api_data = api_response.json()
+
+            # Extract tracks and metadata
+            tracks_data = api_data.get('results', [])
+            total_scrobbles = api_data.get('total_scrobbles', 0)
+            period_display = api_data.get('period_display', 'All Time')
+
+            # Format tracks for template display
+            formatted_tracks = []
+            max_scrobbles = max([track.get('scrobble_count', 0) for track in tracks_data]) if tracks_data else 1
+
+            for rank, track in enumerate(tracks_data, 1):
+                scrobble_count = track.get('scrobble_count', 0)
+                percentage = (scrobble_count / total_scrobbles * 100) if total_scrobbles > 0 else 0
+                progress_width = (scrobble_count / max_scrobbles * 100) if max_scrobbles > 0 else 0
+
+                formatted_tracks.append({
+                    'rank': rank,
+                    'id': track.get('id'),
+                    'name': track.get('track', 'Unknown Track'),
+                    'artist_name': track.get('artist', 'Unknown Artist'),
+                    'artist_id': track.get('artist_id'),
+                    'album_name': track.get('album', 'Unknown Album'),
+                    'album_id': track.get('album_id'),
+                    'mbid': track.get('mbid'),
+                    'duration': track.get('duration_formatted'),  # Already formatted as MM:SS
+                    'scrobble_count': scrobble_count,
+                    'percentage': round(percentage, 2),
+                    'progress_width': round(progress_width, 1),
+                    'first_scrobble': track.get('first_scrobble'),
+                    'last_scrobble': track.get('last_scrobble'),
+                })
+        else:
+            # API error fallback
+            logger.error(f"Stats API error: {api_response.status_code}")
+            formatted_tracks = []
+            total_scrobbles = 0
+            period_display = time_period.replace('d', ' days').replace('all', 'All Time').title()
+
+    except requests.RequestException as e:
+        logger.error("Failed to fetch top tracks from API", exc_info=True)
+        # Fallback to empty state
+        formatted_tracks = []
+        total_scrobbles = 0
+        period_display = time_period.replace('d', ' days').replace('all', 'All Time').title()
+
+    except Exception as e:
+        logger.error("Error loading top tracks page", exc_info=True)
+        # Fallback to empty state
+        formatted_tracks = []
+        total_scrobbles = 0
+        period_display = 'All Time'
+
+    # Handle CSV export
+    if export_format == 'csv' and formatted_tracks:
+        logger.info("Exporting top tracks to CSV", extra={
+            'period': time_period,
+            'limit': limit,
+            'track_count': len(formatted_tracks)
+        })
+        return _export_top_tracks_csv(formatted_tracks, period_display)
+
+    # Build context for template
     context = {
+        'tracks': formatted_tracks,
+        'total_tracks': len(formatted_tracks),
+        'total_scrobbles': total_scrobbles,
+        'period_display': period_display,
+        'selected_period': time_period,
+        'selected_limit': limit,
         'breadcrumbs': [
             {'title': 'Home', 'url': '/'},
-            {'title': 'Top Tracks'},
-        ]
-    }
-    return render(request, 'core/coming_soon.html', {
+            {'title': 'Top Tracks', 'url': None},
+        ],
         'page_title': 'Top Tracks',
-        'description': 'Identify your most played songs and track preferences.',
-        **context
+        'has_data': len(formatted_tracks) > 0,
+        'error': None,
+        'period_options': [
+            {'value': '7d', 'label': '7 days', 'active': time_period == '7d'},
+            {'value': '30d', 'label': '30 days', 'active': time_period == '30d'},
+            {'value': '90d', 'label': '90 days', 'active': time_period == '90d'},
+            {'value': '180d', 'label': '180 days', 'active': time_period == '180d'},
+            {'value': '365d', 'label': '1 year', 'active': time_period == '365d'},
+            {'value': 'all', 'label': 'All Time', 'active': time_period == 'all'},
+        ],
+        'limit_options': [
+            {'value': 10, 'label': '10', 'active': limit == 10},
+            {'value': 25, 'label': '25', 'active': limit == 25},
+            {'value': 50, 'label': '50', 'active': limit == 50},
+            {'value': 100, 'label': '100', 'active': limit == 100},
+        ],
+    }
+
+    # Log performance
+    load_time = (timezone.now() - start_time).total_seconds()
+    logger.info("Top tracks page loaded", extra={
+        'load_time_seconds': load_time,
+        'period': time_period,
+        'limit': limit,
+        'track_count': len(formatted_tracks),
+        'total_scrobbles': total_scrobbles
     })
+
+    # Handle partial template requests for htmx updates
+    partial = request.GET.get('partial')
+    if partial:
+        if partial == 'list':
+            return render(request, 'core/partials/top_tracks_list.html', context)
+        elif partial == 'filters':
+            return render(request, 'core/partials/top_tracks_filters.html', context)
+
+    return render(request, 'core/top_tracks.html', context)
 
 
 def charts(request):

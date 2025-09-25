@@ -48,22 +48,28 @@ class TopAlbumsSerializer(serializers.ModelSerializer):
 
 class TopTracksSerializer(serializers.ModelSerializer):
     """
-    Story 12 compliant serializer for top tracks API.
-    Returns track, artist, album, scrobble_count, mbid format.
+    Story 12 and 24 compliant serializer for top tracks API.
+    Returns track, artist, album, scrobble_count, mbid, duration format.
     """
     track = serializers.CharField(source='name', read_only=True)
     artist = serializers.CharField(source='artist.name', read_only=True)
     album = serializers.SerializerMethodField()
     scrobble_count = serializers.IntegerField(read_only=True)
     mbid = serializers.CharField(read_only=True)
+    duration = serializers.IntegerField(read_only=True)
+    duration_formatted = serializers.SerializerMethodField()
 
     class Meta:
         model = Track
-        fields = ['track', 'artist', 'album', 'scrobble_count', 'mbid']
+        fields = ['track', 'artist', 'album', 'scrobble_count', 'mbid', 'duration', 'duration_formatted']
 
     def get_album(self, obj):
         """Get album name, handling tracks with missing album information."""
         return obj.album.name if obj.album else None
+
+    def get_duration_formatted(self, obj):
+        """Get formatted duration as MM:SS."""
+        return obj.get_duration_formatted()
 
 
 class ScrobblesChartSerializer(serializers.Serializer):

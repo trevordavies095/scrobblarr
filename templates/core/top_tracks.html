@@ -1,0 +1,569 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }} - Scrobblarr{% endblock %}
+
+{% block extra_css %}
+<style>
+.top-tracks-header {
+    margin-bottom: 2rem;
+}
+
+.top-tracks-title {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(135deg, #bb86fc, #6200ee);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.top-tracks-subtitle {
+    color: #999;
+    font-size: 1.125rem;
+    margin-bottom: 2rem;
+}
+
+.filters-section {
+    background-color: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.filters-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.filter-label {
+    font-weight: 500;
+    color: #e0e0e0;
+    font-size: 0.9rem;
+}
+
+.period-selector {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.period-btn {
+    padding: 0.5rem 1rem;
+    background-color: #333;
+    color: #e0e0e0;
+    border: 1px solid #444;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+}
+
+.period-btn:hover {
+    background-color: #444;
+    border-color: #bb86fc;
+    color: #bb86fc;
+}
+
+.period-btn.active {
+    background-color: #bb86fc;
+    border-color: #bb86fc;
+    color: #121212;
+    font-weight: 600;
+}
+
+.limit-selector {
+    position: relative;
+}
+
+.limit-dropdown {
+    padding: 0.5rem 2.5rem 0.5rem 1rem;
+    background-color: #333;
+    color: #e0e0e0;
+    border: 1px solid #444;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23e0e0e0' stroke-width='2'%3E%3Cpolyline points='6,9 12,15 18,9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+}
+
+.limit-dropdown:hover {
+    background-color: #444;
+    border-color: #bb86fc;
+}
+
+.export-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.export-btn {
+    padding: 0.5rem 1rem;
+    background-color: #444;
+    color: #e0e0e0;
+    border: 1px solid #555;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.2s ease;
+}
+
+.export-btn:hover {
+    background-color: #555;
+    border-color: #bb86fc;
+    color: #bb86fc;
+}
+
+.tracks-table-container {
+    background-color: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 2rem;
+}
+
+.tracks-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.tracks-table th {
+    background-color: #2a2a2a;
+    color: #e0e0e0;
+    font-weight: 600;
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid #333;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.tracks-table td {
+    padding: 1rem;
+    border-bottom: 1px solid #333;
+    color: #e0e0e0;
+}
+
+.tracks-table tr:last-child td {
+    border-bottom: none;
+}
+
+.tracks-table tr:hover {
+    background-color: rgba(187, 134, 252, 0.05);
+}
+
+.rank-cell {
+    font-weight: 600;
+    color: #bb86fc;
+    text-align: center;
+    width: 60px;
+}
+
+.track-cell {
+    font-weight: 500;
+    max-width: 250px;
+}
+
+.track-name {
+    color: #bb86fc;
+    text-decoration: none;
+    transition: color 0.2s ease;
+    display: block;
+    margin-bottom: 0.25rem;
+}
+
+.track-name:hover {
+    color: #d4b3ff;
+    text-decoration: underline;
+}
+
+.artist-cell {
+    font-weight: 400;
+    max-width: 200px;
+}
+
+.artist-name {
+    color: #e0e0e0;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.artist-name:hover {
+    color: #bb86fc;
+    text-decoration: underline;
+}
+
+.album-cell {
+    font-weight: 400;
+    max-width: 200px;
+}
+
+.album-name {
+    color: #999;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.album-name:hover {
+    color: #bb86fc;
+    text-decoration: underline;
+}
+
+.scrobbles-cell {
+    font-family: monospace;
+    font-weight: 500;
+    text-align: right;
+    width: 120px;
+}
+
+.percentage-cell {
+    width: 200px;
+}
+
+.percentage-display {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.percentage-text {
+    font-family: monospace;
+    font-weight: 500;
+    min-width: 50px;
+}
+
+.progress-bar {
+    flex: 1;
+    height: 8px;
+    background-color: #333;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #bb86fc, #6200ee);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.summary-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background-color: #2a2a2a;
+    color: #999;
+    font-size: 0.9rem;
+    border-top: 1px solid #333;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 3rem 2rem;
+    color: #999;
+}
+
+.empty-state-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    display: block;
+    color: #555;
+}
+
+.empty-state h3 {
+    color: #e0e0e0;
+    margin-bottom: 0.5rem;
+}
+
+.empty-state p {
+    margin-bottom: 1.5rem;
+}
+
+.loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(18, 18, 18, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+    .top-tracks-title {
+        font-size: 2rem;
+    }
+
+    .filters-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 1rem;
+    }
+
+    .period-selector {
+        justify-content: center;
+    }
+
+    .tracks-table-container {
+        overflow-x: auto;
+    }
+
+    .tracks-table {
+        min-width: 800px;
+    }
+
+    .tracks-table th,
+    .tracks-table td {
+        padding: 0.75rem 0.5rem;
+    }
+
+    .percentage-display {
+        flex-direction: column;
+        gap: 0.25rem;
+        align-items: flex-start;
+    }
+}
+
+@media (max-width: 480px) {
+    .filters-section {
+        padding: 1rem;
+    }
+
+    .period-btn {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.8rem;
+    }
+
+    .export-actions {
+        flex-direction: column;
+    }
+
+    .summary-info {
+        flex-direction: column;
+        gap: 0.5rem;
+        text-align: center;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="top-tracks-header">
+    <h1 class="top-tracks-title">Top Tracks</h1>
+    <p class="top-tracks-subtitle">
+        Discover your most played songs across different time periods
+    </p>
+</div>
+
+<!-- Filters Section -->
+<div class="filters-section" id="filters-section">
+    <div class="filters-row">
+        <!-- Time Period Selector -->
+        <div class="filter-group">
+            <label class="filter-label">Time Period</label>
+            <div class="period-selector">
+                {% for period in period_options %}
+                <a href="?period={{ period.value }}&limit={{ selected_limit }}"
+                   class="period-btn{% if period.active %} active{% endif %}"
+                   hx-get="{% url 'core:top-tracks' %}?period={{ period.value }}&limit={{ selected_limit }}&partial=list"
+                   hx-target="#tracks-content"
+                   hx-push-url="?period={{ period.value }}&limit={{ selected_limit }}"
+                   hx-swap="outerHTML">
+                    {{ period.label }}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Limit Selector -->
+        <div class="filter-group">
+            <label class="filter-label" for="limit-select">Show</label>
+            <select id="limit-select" class="limit-dropdown"
+                    hx-get="{% url 'core:top-tracks' %}"
+                    hx-target="#tracks-content"
+                    hx-trigger="change"
+                    hx-include="[name='period']"
+                    hx-swap="outerHTML">
+                {% for limit in limit_options %}
+                <option value="{{ limit.value }}"{% if limit.active %} selected{% endif %}>
+                    {{ limit.label }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- Export Actions -->
+        <div class="filter-group">
+            <label class="filter-label">Export</label>
+            <div class="export-actions">
+                <a href="?period={{ selected_period }}&limit={{ selected_limit }}&export=csv"
+                   class="export-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7,10 12,15 17,10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    CSV
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden inputs for htmx -->
+    <input type="hidden" name="period" value="{{ selected_period }}">
+</div>
+
+<!-- Tracks Content -->
+<div id="tracks-content">
+    {% include "core/partials/top_tracks_list.html" %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Handle loading states for htmx requests
+document.addEventListener('htmx:beforeRequest', function(evt) {
+    const target = document.getElementById('tracks-content');
+    if (target) {
+        target.style.position = 'relative';
+        const overlay = document.createElement('div');
+        overlay.className = 'loading-overlay';
+        overlay.id = 'loading-overlay';
+        overlay.innerHTML = '<div class="spinner"></div>';
+        target.appendChild(overlay);
+    }
+});
+
+document.addEventListener('htmx:afterRequest', function(evt) {
+    const overlay = document.getElementById('loading-overlay');
+    if (overlay) {
+        overlay.remove();
+    }
+});
+
+// Update limit selector and period buttons when URL changes
+document.addEventListener('htmx:afterRequest', function(evt) {
+    const urlParams = new URLSearchParams(window.location.search);
+
+    // Update the limit selector to match the current URL params
+    const limitSelect = document.getElementById('limit-select');
+    if (limitSelect && urlParams.has('limit')) {
+        limitSelect.value = urlParams.get('limit');
+    }
+
+    // Update active period button based on URL
+    const currentPeriod = urlParams.get('period') || 'all';
+    const periodButtons = document.querySelectorAll('.period-btn');
+    periodButtons.forEach(btn => {
+        // Remove active class from all buttons
+        btn.classList.remove('active');
+
+        // Add active class to matching button
+        const btnHref = btn.getAttribute('href');
+        if (btnHref && btnHref.includes(`period=${currentPeriod}`)) {
+            btn.classList.add('active');
+        }
+    });
+});
+
+// Enhanced htmx error handling
+document.addEventListener('htmx:responseError', function(evt) {
+    console.error('htmx response error:', evt.detail);
+    const target = document.getElementById('tracks-content');
+    if (target) {
+        target.innerHTML = `
+            <div class="tracks-table-container">
+                <div class="empty-state">
+                    <span class="empty-state-icon">⚠️</span>
+                    <h3>Unable to Load Tracks</h3>
+                    <p>There was an error loading the tracks data. Please try again.</p>
+                    <div style="margin-top: 1.5rem;">
+                        <button onclick="window.location.reload()" class="btn btn-primary">
+                            Reload Page
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+});
+
+document.addEventListener('htmx:sendError', function(evt) {
+    console.error('htmx send error:', evt.detail);
+    const target = document.getElementById('tracks-content');
+    if (target) {
+        target.innerHTML = `
+            <div class="tracks-table-container">
+                <div class="empty-state">
+                    <span class="empty-state-icon">🔌</span>
+                    <h3>Connection Error</h3>
+                    <p>Unable to connect to the server. Please check your connection and try again.</p>
+                    <div style="margin-top: 1.5rem;">
+                        <button onclick="window.location.reload()" class="btn btn-primary">
+                            Retry
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+});
+
+document.addEventListener('htmx:targetError', function(evt) {
+    console.error('htmx target error:', evt.detail);
+    // Target error means the target element disappeared
+    // This should be fixed by our wrapped partial template, but just in case:
+    if (!document.getElementById('tracks-content')) {
+        console.warn('htmx target #tracks-content missing, reloading page');
+        window.location.reload();
+    }
+});
+
+document.addEventListener('htmx:timeout', function(evt) {
+    console.error('htmx timeout:', evt.detail);
+    const target = document.getElementById('tracks-content');
+    if (target) {
+        target.innerHTML = `
+            <div class="tracks-table-container">
+                <div class="empty-state">
+                    <span class="empty-state-icon">⏱️</span>
+                    <h3>Request Timeout</h3>
+                    <p>The request took too long to complete. Please try again.</p>
+                    <div style="margin-top: 1.5rem;">
+                        <button onclick="window.location.reload()" class="btn btn-primary">
+                            Try Again
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+});
+</script>
+{% endblock %}
