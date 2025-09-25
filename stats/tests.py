@@ -576,6 +576,196 @@ class StatsAPITestCase(APITestCase):
             # mbid can be None or string
             self.assertTrue(track['mbid'] is None or isinstance(track['mbid'], str))
 
+    def test_scrobbles_chart_basic(self):
+        """Test basic scrobbles chart endpoint functionality."""
+        url = reverse('stats:scrobbles-chart')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        # Story 13 required response format
+        self.assertIn('period', data)
+        self.assertIn('granularity', data)
+        self.assertIn('data', data)
+        self.assertIn('total_scrobbles', data)
+
+        # Check data structure
+        if data['data']:
+            first_item = data['data'][0]
+            expected_keys = {'period', 'scrobble_count', 'start_date', 'end_date'}
+            self.assertEqual(set(first_item.keys()), expected_keys)
+
+    def test_scrobbles_chart_auto_granularity(self):
+        """Test automatic granularity selection."""
+        url = reverse('stats:scrobbles-chart')
+
+        # Test different periods and expected granularities
+        test_cases = [
+            ('7d', 'daily'),
+            ('30d', 'daily'),
+            ('90d', 'monthly'),
+            ('365d', 'monthly'),
+            ('all', 'yearly')
+        ]
+
+        for period, expected_granularity in test_cases:
+            with self.subTest(period=period, expected_granularity=expected_granularity):
+                response = self.client.get(url, {'period': period})
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                data = response.json()
+                self.assertEqual(data['granularity'], expected_granularity)
+
+    def test_scrobbles_chart_manual_granularity(self):
+        """Test manual granularity override."""
+        url = reverse('stats:scrobbles-chart')
+
+        granularities = ['daily', 'monthly', 'yearly']
+        for granularity in granularities:
+            with self.subTest(granularity=granularity):
+                response = self.client.get(url, {
+                    'period': '365d',
+                    'granularity': granularity
+                })
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                data = response.json()
+                self.assertEqual(data['granularity'], granularity)
+
+    def test_scrobbles_chart_invalid_granularity(self):
+        """Test invalid granularity handling."""
+        url = reverse('stats:scrobbles-chart')
+        response = self.client.get(url, {'granularity': 'invalid'})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_scrobbles_chart_time_periods(self):
+        """Test all supported time periods for chart data."""
+        url = reverse('stats:scrobbles-chart')
+        periods = ['7d', '30d', '90d', '180d', '365d', 'all']
+
+        for period in periods:
+            with self.subTest(period=period):
+                response = self.client.get(url, {'period': period})
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                data = response.json()
+                self.assertEqual(data['period'], period)
+
+    def test_scrobbles_chart_custom_date_range(self):
+        """Test custom date range filtering for chart data."""
+        url = reverse('stats:scrobbles-chart')
+
+        # Test with both from_date and to_date
+        response = self.client.get(url, {
+            'from_date': '2023-01-01',
+            'to_date': '2023-01-31',
+            'granularity': 'daily'
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertEqual(data['period'], '2023-01-01 to 2023-01-31')
+        self.assertEqual(data['granularity'], 'daily')
+
+    def test_scrobbles_chart_data_format(self):
+        """Test chart data format compliance."""
+        url = reverse('stats:scrobbles-chart')
+        response = self.client.get(url, {'period': '30d', 'granularity': 'daily'})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        # Check data items format
+        for item in data['data']:
+            self.assertIn('period', item)
+            self.assertIn('scrobble_count', item)
+            self.assertIn('start_date', item)
+            self.assertIn('end_date', item)
+
+            # Verify types
+            self.assertIsInstance(item['period'], str)
+            self.assertIsInstance(item['scrobble_count'], int)
+            self.assertIsInstance(item['start_date'], str)
+            self.assertIsInstance(item['end_date'], str)
+
+            # Verify scrobble_count is non-negative
+            self.assertGreaterEqual(item['scrobble_count'], 0)
+
+    def test_scrobbles_chart_granularity_formats(self):
+        """Test period format for different granularities."""
+        url = reverse('stats:scrobbles-chart')
+
+        # Daily format: YYYY-MM-DD
+        response = self.client.get(url, {'period': '7d', 'granularity': 'daily'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        if data['data']:
+            period = data['data'][0]['period']
+            self.assertRegex(period, r'^\d{4}-\d{2}-\d{2}$')
+
+        # Monthly format: YYYY-MM
+        response = self.client.get(url, {'period': '90d', 'granularity': 'monthly'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        if data['data']:
+            period = data['data'][0]['period']
+            self.assertRegex(period, r'^\d{4}-\d{2}$')
+
+        # Yearly format: YYYY
+        response = self.client.get(url, {'period': 'all', 'granularity': 'yearly'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        if data['data']:
+            period = data['data'][0]['period']
+            self.assertRegex(period, r'^\d{4}$')
+
+    def test_scrobbles_chart_empty_periods(self):
+        """Test handling of periods with no scrobbles."""
+        url = reverse('stats:scrobbles-chart')
+
+        # Request data for future dates (should have no scrobbles)
+        response = self.client.get(url, {
+            'from_date': '2030-01-01',
+            'to_date': '2030-01-31',
+            'granularity': 'daily'
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        # Should have empty data array or all zero counts
+        for item in data['data']:
+            self.assertEqual(item['scrobble_count'], 0)
+
+    def test_scrobbles_chart_invalid_dates(self):
+        """Test invalid date format handling."""
+        url = reverse('stats:scrobbles-chart')
+
+        # Invalid date format
+        response = self.client.get(url, {'from_date': 'invalid-date'})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # Invalid date range
+        response = self.client.get(url, {
+            'from_date': '2023-12-31',
+            'to_date': '2023-01-01'
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_scrobbles_chart_performance_limiting(self):
+        """Test that data points are limited for performance."""
+        url = reverse('stats:scrobbles-chart')
+
+        # Request a very long period that might generate many data points
+        response = self.client.get(url, {
+            'from_date': '2020-01-01',
+            'to_date': '2025-12-31',
+            'granularity': 'daily'
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        # Should be limited to reasonable number of points
+        self.assertLessEqual(len(data['data']), 366)
+
     def test_artist_detail(self):
         """Test artist detail endpoint."""
         url = reverse('stats:artist-detail', kwargs={'pk': self.artist1.id})

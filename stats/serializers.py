@@ -66,6 +66,20 @@ class TopTracksSerializer(serializers.ModelSerializer):
         return obj.album.name if obj.album else None
 
 
+class ScrobblesChartSerializer(serializers.Serializer):
+    """
+    Story 13 compliant serializer for scrobbles chart data API.
+    Optimized for Chart.js consumption with time-series data.
+    """
+    period = serializers.CharField(read_only=True)
+    scrobble_count = serializers.IntegerField(read_only=True)
+    start_date = serializers.CharField(read_only=True)
+    end_date = serializers.CharField(read_only=True)
+
+    class Meta:
+        fields = ['period', 'scrobble_count', 'start_date', 'end_date']
+
+
 class TrackListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for track lists with counts."""
     artist_name = serializers.CharField(source='artist.name', read_only=True)

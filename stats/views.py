@@ -15,7 +15,8 @@ from .serializers import (
     AlbumListSerializer, AlbumDetailSerializer,
     TrackListSerializer, TrackDetailSerializer,
     ScrobbleListSerializer, RecentTracksSerializer,
-    TopAlbumsSerializer, TopTracksSerializer
+    TopAlbumsSerializer, TopTracksSerializer,
+    ScrobblesChartSerializer
 )
 
 
@@ -267,6 +268,87 @@ class StatsViewSet(viewsets.ViewSet):
 
         return period
 
+    def get_granularity(self, request, time_filter):
+        """Get granularity for chart data - auto or manual override."""
+        # Check for manual override
+        manual_granularity = request.query_params.get('granularity')
+        if manual_granularity in ['daily', 'monthly', 'yearly']:
+            return manual_granularity
+
+        # Auto-granularity based on time range
+        return self._calculate_auto_granularity(request, time_filter)
+
+    def _calculate_auto_granularity(self, request, time_filter):
+        """Calculate automatic granularity based on time range."""
+        # For custom date ranges
+        if isinstance(time_filter, tuple):
+            from_date, to_date = time_filter
+            if from_date and to_date:
+                days = (to_date.date() - from_date.date()).days
+            elif from_date:
+                # From date to now
+                days = (timezone.now().date() - from_date.date()).days
+            elif to_date:
+                # Assume 1 year if only to_date provided
+                days = 365
+            else:
+                days = 365
+        else:
+            # Map period strings to days
+            period = request.query_params.get('period', 'all')
+            period_to_days = {
+                '7d': 7,
+                '30d': 30,
+                '90d': 90,
+                '180d': 180,
+                '365d': 365,
+                'all': 1000  # Treat 'all' as very long period for yearly
+            }
+            days = period_to_days.get(period, 365)
+
+        # Auto-granularity logic
+        if days <= 31:
+            return 'daily'
+        elif days <= 365:
+            return 'monthly'
+        else:
+            return 'yearly'
+
+    def _get_date_trunc_format(self, granularity):
+        """Get SQLite date format string for granularity."""
+        formats = {
+            'daily': '%Y-%m-%d',
+            'monthly': '%Y-%m',
+            'yearly': '%Y'
+        }
+        return formats.get(granularity, '%Y-%m')
+
+    def _build_period_info(self, period_value, granularity):
+        """Build start_date and end_date for a chart period."""
+        if granularity == 'daily':
+            start_date = end_date = period_value
+        elif granularity == 'monthly':
+            # Parse YYYY-MM format
+            year, month = map(int, period_value.split('-'))
+            start_date = f"{year:04d}-{month:02d}-01"
+
+            # Calculate last day of month
+            if month == 12:
+                next_month = datetime(year + 1, 1, 1)
+            else:
+                next_month = datetime(year, month + 1, 1)
+            last_day = (next_month - timedelta(days=1)).day
+            end_date = f"{year:04d}-{month:02d}-{last_day:02d}"
+        elif granularity == 'yearly':
+            # Parse YYYY format
+            year = int(period_value)
+            start_date = f"{year:04d}-01-01"
+            end_date = f"{year:04d}-12-31"
+        else:
+            start_date = end_date = period_value
+
+        return start_date, end_date
+
     def list(self, request):
         """API overview with available endpoints."""
         return Response({
@@ -276,11 +358,13 @@ class StatsViewSet(viewsets.ViewSet):
                 "top_artists": "/api/top-artists/?period=30d",
                 "top_albums": "/api/top-albums/?period=30d",
                 "top_tracks": "/api/top-tracks/?period=30d",
+                "scrobbles_chart": "/api/scrobbles/chart/?period=30d&granularity=monthly",
                 "artists": "/api/artists/{id}/",
                 "albums": "/api/albums/{id}/",
                 "tracks": "/api/tracks/{id}/"
             },
-            "time_periods": ["7d", "30d", "90d", "180d", "365d", "all"]
+            "time_periods": ["7d", "30d", "90d", "180d", "365d", "all"],
+            "granularity_options": ["daily", "monthly", "yearly"]
         })
 
     @action(detail=False)
@@ -491,6 +575,86 @@ class StatsViewSet(viewsets.ViewSet):
             'period': period_display,
             'results': serializer.data,
             'count': len(serializer.data),
+            'total_scrobbles': total_scrobbles
+        })
+
+    @action(detail=False, url_path='scrobbles/chart')
+    def chart_data(self, request):
+        """Get scrobbles over time chart data (Story 13 compliant)."""
+        try:
+            time_filter = self.get_time_filter(request)
+            period_display = self.get_period_display(request)
+            granularity = self.get_granularity(request, time_filter)
+        except APIError:
+            # Re-raise APIError to return proper HTTP status codes
+            raise
+
+        # Validate granularity
+        if request.query_params.get('granularity') and request.query_params.get('granularity') not in ['daily', 'monthly', 'yearly']:
+            raise APIError(
+                "Invalid granularity. Use: daily, monthly, yearly",
+                status_code=400,
+                error_code="INVALID_GRANULARITY"
+            )
+
+        # Build base queryset with time filtering
+        base_queryset = Scrobble.objects.all()
+
+        # Apply time filtering
+        if isinstance(time_filter, tuple):
+            from_date, to_date = time_filter
+            if from_date:
+                base_queryset = base_queryset.filter(timestamp__gte=from_date)
+            if to_date:
+                base_queryset = base_queryset.filter(timestamp__lte=to_date)
+        elif time_filter:
+            base_queryset = base_queryset.filter(timestamp__gte=time_filter)
+
+        # Get date truncation format
+        date_format = self._get_date_trunc_format(granularity)
+
+        # Perform database aggregation using SQLite's strftime
+        from django.db.models import Count
+        chart_data = base_queryset.extra(
+            select={
+                'period': f"strftime('{date_format}', timestamp)"
+            }
+        ).values('period').annotate(
+            scrobble_count=Count('id')
+        ).order_by('period')
+
+        # Convert to list and limit data points (max 366 for daily leap year)
+        chart_results = list(chart_data)
+        if len(chart_results) > 366:
+            # If too many points, sample evenly
+            step = len(chart_results) // 366 + 1
+            chart_results = chart_results[::step]
+
+        # Fill gaps and build response data
+        response_data = []
+        for item in chart_results:
+            period_value = item['period']
+            scrobble_count = item['scrobble_count']
+
+            if period_value:  # Skip null periods
+                start_date, end_date = self._build_period_info(period_value, granularity)
+                response_data.append({
+                    'period': period_value,
+                    'scrobble_count': scrobble_count,
+                    'start_date': start_date,
+                    'end_date': end_date
+                })
+
+        # Calculate total scrobbles for the period
+        total_scrobbles = base_queryset.count()
+
+        # Serialize the data
+        serializer = ScrobblesChartSerializer(response_data, many=True)
+
+        return Response({
+            'period': period_display,
+            'granularity': granularity,
+            'data': serializer.data,
             'total_scrobbles': total_scrobbles
         })
 
