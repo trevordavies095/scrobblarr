@@ -11,7 +11,19 @@ from django.http import Http404
 from django.core.cache import cache
 from datetime import timedelta, datetime
 from music.models import Artist, Album, Track, Scrobble
-from core.exceptions import APIError, DataValidationError
+from core.exceptions import (
+    APIError, DataValidationError, InvalidTimePeriodError,
+    InvalidDateFormatError, InvalidDateRangeError, InvalidLimitError,
+    InvalidGranularityError
+)
+from .decorators import (
+    validate_recent_tracks_params,
+    validate_top_artists_params,
+    validate_top_albums_params,
+    validate_top_tracks_params,
+    validate_chart_data_params
+)
+from .throttling import StatsSummaryThrottle, ChartDataThrottle
 from .serializers import (
     ArtistListSerializer, ArtistDetailSerializer, ArtistStory14Serializer,
     AlbumListSerializer, AlbumDetailSerializer, AlbumStory15Serializer,
@@ -167,9 +179,11 @@ class TopTracksPagination(PageNumberPagination):
 
 class StatsViewSet(viewsets.ViewSet):
     """
-    Stats API viewset for music analytics
+    Stats API viewset for music analytics with error handling and rate limiting
     """
     pagination_class = StandardResultsSetPagination
+    throttle_classes = [StatsSummaryThrottle, ChartDataThrottle]
+    throttle_scope = None  # Will be overridden by specific methods
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -214,25 +228,17 @@ class StatsViewSet(viewsets.ViewSet):
     def parse_date_range(self, from_date, to_date, request):
         """Parse custom date range from query parameters."""
         try:
-            parsed_from = None
-            parsed_to = None
+            from .validators import validate_date_format, validate_date_range
 
-            if from_date:
-                parsed_from = timezone.make_aware(datetime.strptime(from_date, '%Y-%m-%d'))
+            parsed_from = validate_date_format(from_date, 'from_date') if from_date else None
+            parsed_to = validate_date_format(to_date, 'to_date') if to_date else None
 
-            if to_date:
+            if parsed_to:
                 # Set to end of day for to_date
-                parsed_to = timezone.make_aware(
-                    datetime.strptime(to_date, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
-                )
+                parsed_to = parsed_to.replace(hour=23, minute=59, second=59)
 
             # Validation: from_date should be before to_date
-            if parsed_from and parsed_to and parsed_from > parsed_to:
-                raise APIError(
-                    "from_date must be before to_date",
-                    status_code=400,
-                    error_code="INVALID_DATE_RANGE"
-                )
+            validate_date_range(parsed_from, parsed_to)
 
             # Return tuple (from_date, to_date) instead of single date
             return (parsed_from, parsed_to)
@@ -261,21 +267,20 @@ class StatsViewSet(viewsets.ViewSet):
             elif to_date:
                 return f"until {to_date}"
 
-        # Return the validated period (not the raw input)
+        # Return the validated period (use new validation)
+        from .validators import validate_time_period
         period = request.query_params.get('period', 'all')
-        valid_periods = ['7d', '30d', '90d', '180d', '365d', 'all']
-
-        if period not in valid_periods:
-            return 'all'  # Default to 'all' for invalid periods
-
-        return period
+        return validate_time_period(period)
 
     def get_granularity(self, request, time_filter):
         """Get granularity for chart data - auto or manual override."""
-        # Check for manual override
+        # Check for manual override with proper validation
+        from .validators import validate_granularity
         manual_granularity = request.query_params.get('granularity')
-        if manual_granularity in ['daily', 'monthly', 'yearly']:
-            return manual_granularity
+        validated_granularity = validate_granularity(manual_granularity)
+
+        if validated_granularity:
+            return validated_granularity
 
         # Auto-granularity based on time range
         return self._calculate_auto_granularity(request, time_filter)
@@ -560,14 +565,41 @@ class StatsViewSet(viewsets.ViewSet):
             }
 
     @action(detail=False)
+    @validate_recent_tracks_params()
     def recent_tracks(self, request):
         """
         Get recent listening activity.
+
         Story 9 compliant endpoint with default limit 10, supports ?limit=N (max 50).
+
+        **Query Parameters:**
+        - `limit`: Number of results (1-50, default: 10)
+
+        **Error Responses:**
+        - 400: Invalid limit parameter
+
+        **Example Error:**
+        ```json
+        {
+          "error": {
+            "code": "INVALID_LIMIT",
+            "message": "Invalid limit '100'. Must be between 1 and 50.",
+            "details": {
+              "parameter": "limit",
+              "provided": "100",
+              "min_value": 1,
+              "max_value": 50
+            }
+          }
+        }
+        ```
         """
         scrobbles = Scrobble.objects.select_related(
             'track', 'track__artist', 'track__album'
         ).order_by('-timestamp')
+
+        # Use validated limit from decorator
+        limit = request.validated_params['limit']
 
         paginator = RecentTracksPagination()
         page = paginator.paginate_queryset(scrobbles, request)
@@ -1016,6 +1048,26 @@ class StatsViewSet(viewsets.ViewSet):
         """
         Get overall listening statistics summary (Story 16 compliant).
         Returns totals, date range, top all-time items, and listening averages.
+
+        **Rate Limiting:** 100 requests per hour per user
+
+        **Error Responses:**
+        - 429: Rate limit exceeded
+        - 500: Internal server error
+
+        **Example Rate Limit Error:**
+        ```json
+        {
+          "error": {
+            "code": "RATE_LIMIT_EXCEEDED",
+            "message": "Rate limit exceeded for statistics summary endpoint",
+            "details": {
+              "resource": "stats_summary",
+              "retry_after": 3600
+            }
+          }
+        }
+        ```
         """
         try:
             # Generate cache key based on latest scrobble timestamp for smart invalidation

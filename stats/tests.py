@@ -1953,3 +1953,278 @@ class Story16StatisticsSummaryAPITestCase(APITestCase):
         # Albums count should only count tracks that have albums
         albums_with_scrobbles = Album.objects.filter(tracks__scrobbles__isnull=False).distinct().count()
         self.assertEqual(data['totals']['albums'], albums_with_scrobbles)
+
+
+class Story17ErrorHandlingTestCase(APITestCase):
+    """
+    Test cases for Story 17: API Error Handling & Validation.
+    Tests consistent error response format and validation across all endpoints.
+    """
+
+    def setUp(self):
+        """Set up test data for error testing."""
+        self.artist = Artist.objects.create(name="Test Artist", mbid="12345678-1234-1234-1234-123456789012")
+        self.album = Album.objects.create(name="Test Album", artist=self.artist)
+        self.track = Track.objects.create(name="Test Track", artist=self.artist, album=self.album)
+        self.scrobble = Scrobble.objects.create(
+            track=self.track,
+            timestamp=timezone.now(),
+            lastfm_reference_id="test_scrobble"
+        )
+
+    def test_invalid_time_period_error_format(self):
+        """Test that invalid time period returns consistent error format."""
+        endpoints = [
+            reverse('stats:top-artists'),
+            reverse('stats:top-albums'),
+            reverse('stats:top-tracks'),
+            reverse('stats:scrobbles-chart')
+        ]
+
+        for url in endpoints:
+            with self.subTest(endpoint=url):
+                response = self.client.get(url, {'period': '45d'})
+
+                # Should return 400 with proper error format
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+                data = response.json()
+
+                # Check error structure matches Story 17 specification
+                self.assertIn('error', data)
+                self.assertIn('code', data['error'])
+                self.assertIn('message', data['error'])
+                self.assertIn('details', data['error'])
+
+                # Check specific error code and message
+                self.assertEqual(data['error']['code'], 'INVALID_TIME_PERIOD')
+                self.assertIn('45d', data['error']['message'])
+                self.assertIn('parameter', data['error']['details'])
+                self.assertEqual(data['error']['details']['parameter'], 'period')
+                self.assertEqual(data['error']['details']['provided'], '45d')
+
+    def test_invalid_date_format_error(self):
+        """Test that invalid date format returns consistent error format."""
+        url = reverse('stats:top-artists')
+        response = self.client.get(url, {'from_date': 'invalid-date'})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        data = response.json()
+
+        # Check error structure
+        self.assertIn('error', data)
+        self.assertEqual(data['error']['code'], 'INVALID_DATE_FORMAT')
+        self.assertIn('from_date', data['error']['message'])
+        self.assertEqual(data['error']['details']['parameter'], 'from_date')
+        self.assertEqual(data['error']['details']['provided'], 'invalid-date')
+
+    def test_invalid_date_range_error(self):
+        """Test that invalid date range returns consistent error format."""
+        url = reverse('stats:top-artists')
+        response = self.client.get(url, {
+            'from_date': '2024-01-15',
+            'to_date': '2024-01-10'  # to_date before from_date
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        data = response.json()
+
+        # Check error structure
+        self.assertIn('error', data)
+        self.assertEqual(data['error']['code'], 'INVALID_DATE_RANGE')
+        self.assertIn('from_date must be before to_date', data['error']['message'])
+
+    def test_invalid_limit_error(self):
+        """Test that invalid limit returns consistent error format."""
+        url = reverse('stats:recent-tracks')
+        response = self.client.get(url, {'limit': '100'})  # Max is 50 for recent tracks
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        data = response.json()
+
+        # Check error structure
+        self.assertIn('error', data)
+        self.assertEqual(data['error']['code'], 'INVALID_LIMIT')
+        self.assertEqual(data['error']['details']['parameter'], 'limit')
+        self.assertEqual(data['error']['details']['provided'], '100')
+        self.assertIn('min_value', data['error']['details'])
+        self.assertIn('max_value', data['error']['details'])
+
+    def test_invalid_granularity_error(self):
+        """Test that invalid granularity returns consistent error format."""
+        url = reverse('stats:scrobbles-chart')
+        response = self.client.get(url, {'granularity': 'invalid'})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        data = response.json()
+
+        # Check error structure
+        self.assertIn('error', data)
+        self.assertEqual(data['error']['code'], 'INVALID_GRANULARITY')
+        self.assertEqual(data['error']['details']['parameter'], 'granularity')
+        self.assertEqual(data['error']['details']['provided'], 'invalid')
+        self.assertIn('allowed', data['error']['details'])
+        self.assertEqual(data['error']['details']['allowed'], ['daily', 'monthly', 'yearly'])
+
+    def test_not_found_error_format(self):
+        """Test that 404 errors return consistent format."""
+        url = reverse('stats:artist-detail', kwargs={'pk': 99999})
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        data = response.json()
+
+        # Check error structure
+        self.assertIn('error', data)
+        self.assertEqual(data['error']['code'], 'NOT_FOUND')
+        self.assertIn('message', data['error'])
+        self.assertIn('details', data['error'])
+
+    def test_method_not_allowed_error_format(self):
+        """Test that 405 errors return consistent format."""
+        url = reverse('stats:recent-tracks')
+        response = self.client.post(url)  # POST not allowed
+
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        data = response.json()
+
+        # Check error structure
+        self.assertIn('error', data)
+        self.assertEqual(data['error']['code'], 'METHOD_NOT_ALLOWED')
+        self.assertIn('POST', data['error']['message'])
+
+    def test_request_id_included_in_errors(self):
+        """Test that request_id is included in error responses for tracing."""
+        url = reverse('stats:top-artists')
+        response = self.client.get(url, {'period': 'invalid'})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        data = response.json()
+
+        # Should include request_id for tracing
+        self.assertIn('request_id', data)
+        self.assertIsInstance(data['request_id'], str)
+
+    def test_error_consistency_across_endpoints(self):
+        """Test that error format is consistent across all API endpoints."""
+        test_cases = [
+            {
+                'url': reverse('stats:recent-tracks'),
+                'params': {'limit': 'invalid'},
+                'expected_code': 'INVALID_LIMIT'
+            },
+            {
+                'url': reverse('stats:top-artists'),
+                'params': {'period': 'invalid'},
+                'expected_code': 'INVALID_TIME_PERIOD'
+            },
+            {
+                'url': reverse('stats:top-albums'),
+                'params': {'from_date': 'invalid'},
+                'expected_code': 'INVALID_DATE_FORMAT'
+            },
+            {
+                'url': reverse('stats:top-tracks'),
+                'params': {'limit': '1000'},
+                'expected_code': 'INVALID_LIMIT'
+            },
+            {
+                'url': reverse('stats:scrobbles-chart'),
+                'params': {'granularity': 'invalid'},
+                'expected_code': 'INVALID_GRANULARITY'
+            }
+        ]
+
+        for case in test_cases:
+            with self.subTest(endpoint=case['url'], expected=case['expected_code']):
+                response = self.client.get(case['url'], case['params'])
+
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+                data = response.json()
+
+                # Check consistent error structure
+                required_fields = ['error', 'request_id']
+                for field in required_fields:
+                    self.assertIn(field, data)
+
+                error_fields = ['code', 'message', 'details']
+                for field in error_fields:
+                    self.assertIn(field, data['error'])
+
+                self.assertEqual(data['error']['code'], case['expected_code'])
+
+    def test_rate_limiting_error_format(self):
+        """Test that rate limiting returns consistent error format."""
+        # Note: This test would require actually triggering rate limits
+        # For now, we test that the throttle classes are configured
+        from stats.views import StatsViewSet
+
+        # Check that throttling is configured
+        self.assertTrue(hasattr(StatsViewSet, 'throttle_classes'))
+        self.assertIsNotNone(StatsViewSet.throttle_classes)
+
+    def test_malformed_json_error_format(self):
+        """Test that malformed JSON returns consistent error format."""
+        url = reverse('stats:recent-tracks')
+        response = self.client.post(
+            url,
+            data='{"invalid": json}',
+            content_type='application/json'
+        )
+
+        # Should return consistent error format even for parse errors
+        self.assertIn(response.status_code, [400, 405])  # Depending on view setup
+
+        if response.status_code == 400:
+            data = response.json()
+            self.assertIn('error', data)
+            self.assertIn('code', data['error'])
+
+    def test_validation_with_multiple_errors(self):
+        """Test validation when multiple parameters are invalid."""
+        url = reverse('stats:top-artists')
+        response = self.client.get(url, {
+            'period': 'invalid_period',
+            'limit': '1000',
+            'from_date': 'invalid_date'
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        data = response.json()
+
+        # Should return first validation error encountered
+        self.assertIn('error', data)
+        self.assertIn('code', data['error'])
+        self.assertIn(data['error']['code'], [
+            'INVALID_TIME_PERIOD',
+            'INVALID_LIMIT',
+            'INVALID_DATE_FORMAT'
+        ])
+
+    def test_error_messages_are_helpful(self):
+        """Test that error messages are helpful for developers."""
+        test_cases = [
+            {
+                'url': reverse('stats:top-artists'),
+                'params': {'period': '45d'},
+                'should_contain': ['45d', 'not supported', '7d', '30d', '90d', '180d', '365d', 'all']
+            },
+            {
+                'url': reverse('stats:recent-tracks'),
+                'params': {'limit': '100'},
+                'should_contain': ['100', 'Must be between', '1', '50']
+            },
+            {
+                'url': reverse('stats:scrobbles-chart'),
+                'params': {'granularity': 'hourly'},
+                'should_contain': ['hourly', 'daily', 'monthly', 'yearly']
+            }
+        ]
+
+        for case in test_cases:
+            with self.subTest(endpoint=case['url']):
+                response = self.client.get(case['url'], case['params'])
+                data = response.json()
+
+                message = data['error']['message'].lower()
+                for should_contain in case['should_contain']:
+                    self.assertIn(should_contain.lower(), message)

@@ -123,3 +123,110 @@ class RateLimitError(ScrobblarrError):
             self.details.update({'resource': resource})
         if retry_after:
             self.details.update({'retry_after': retry_after})
+
+
+class InvalidParameterError(APIError):
+    """Raised when API parameters are invalid."""
+
+    def __init__(self, message, parameter=None, provided_value=None, allowed_values=None, **kwargs):
+        error_code = kwargs.pop('error_code', 'INVALID_PARAMETER')
+        super().__init__(message, status_code=400, error_code=error_code, **kwargs)
+        self.parameter = parameter
+        self.provided_value = provided_value
+        self.allowed_values = allowed_values
+
+        if parameter:
+            self.details.update({'parameter': parameter})
+        if provided_value is not None:
+            self.details.update({'provided': provided_value})
+        if allowed_values is not None:
+            self.details.update({'allowed': allowed_values})
+
+
+class InvalidTimePeriodError(InvalidParameterError):
+    """Raised when an invalid time period is provided."""
+
+    def __init__(self, provided_period, **kwargs):
+        allowed_periods = ['7d', '30d', '90d', '180d', '365d', 'all']
+        message = f"Time period '{provided_period}' is not supported. Use: {', '.join(allowed_periods)}"
+        super().__init__(
+            message=message,
+            parameter='period',
+            provided_value=provided_period,
+            allowed_values=allowed_periods,
+            error_code='INVALID_TIME_PERIOD',
+            **kwargs
+        )
+
+
+class InvalidDateFormatError(InvalidParameterError):
+    """Raised when date parameters have invalid format."""
+
+    def __init__(self, parameter, provided_value, **kwargs):
+        message = f"Invalid date format for '{parameter}'. Use YYYY-MM-DD format."
+        super().__init__(
+            message=message,
+            parameter=parameter,
+            provided_value=provided_value,
+            error_code='INVALID_DATE_FORMAT',
+            **kwargs
+        )
+
+
+class InvalidDateRangeError(InvalidParameterError):
+    """Raised when date range parameters are invalid."""
+
+    def __init__(self, message="Invalid date range", **kwargs):
+        super().__init__(
+            message=message,
+            error_code='INVALID_DATE_RANGE',
+            **kwargs
+        )
+
+
+class InvalidLimitError(InvalidParameterError):
+    """Raised when limit/pagination parameters are invalid."""
+
+    def __init__(self, parameter, provided_value, min_value=1, max_value=100, **kwargs):
+        message = f"Invalid {parameter} '{provided_value}'. Must be between {min_value} and {max_value}."
+        super().__init__(
+            message=message,
+            parameter=parameter,
+            provided_value=provided_value,
+            error_code='INVALID_LIMIT',
+            **kwargs
+        )
+        self.details.update({
+            'min_value': min_value,
+            'max_value': max_value
+        })
+
+
+class InvalidGranularityError(InvalidParameterError):
+    """Raised when granularity parameter is invalid."""
+
+    def __init__(self, provided_granularity, **kwargs):
+        allowed_granularities = ['daily', 'monthly', 'yearly']
+        message = f"Invalid granularity '{provided_granularity}'. Use: {', '.join(allowed_granularities)}"
+        super().__init__(
+            message=message,
+            parameter='granularity',
+            provided_value=provided_granularity,
+            allowed_values=allowed_granularities,
+            error_code='INVALID_GRANULARITY',
+            **kwargs
+        )
+
+
+class RateLimitExceededError(APIError):
+    """Raised when rate limits are exceeded (API-specific)."""
+
+    def __init__(self, message, resource=None, retry_after=None, **kwargs):
+        super().__init__(message, status_code=429, error_code='RATE_LIMIT_EXCEEDED', **kwargs)
+        self.resource = resource
+        self.retry_after = retry_after
+
+        if resource:
+            self.details.update({'resource': resource})
+        if retry_after:
+            self.details.update({'retry_after': retry_after})
