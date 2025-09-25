@@ -19,8 +19,12 @@ urlpatterns = [
     path('top-tracks/', views.StatsViewSet.as_view({'get': 'top_tracks'}), name='top-tracks'),
     # Story 13: Direct scrobbles chart endpoint
     path('scrobbles/chart/', views.StatsViewSet.as_view({'get': 'chart_data'}), name='scrobbles-chart'),
-    # Individual resource endpoints
+    # Individual resource endpoints - ID lookup
     path('artists/<int:pk>/', views.StatsViewSet.as_view({'get': 'artists'}), name='artist-detail'),
     path('albums/<int:pk>/', views.StatsViewSet.as_view({'get': 'albums'}), name='album-detail'),
     path('tracks/<int:pk>/', views.StatsViewSet.as_view({'get': 'tracks'}), name='track-detail'),
+    # Individual resource endpoints - MBID lookup (Story 14)
+    path('artists/<uuid:pk>/', views.StatsViewSet.as_view({'get': 'artists'}), name='artist-detail-mbid'),
+    path('albums/<uuid:pk>/', views.StatsViewSet.as_view({'get': 'albums'}), name='album-detail-mbid'),
+    path('tracks/<uuid:pk>/', views.StatsViewSet.as_view({'get': 'tracks'}), name='track-detail-mbid'),
 ]

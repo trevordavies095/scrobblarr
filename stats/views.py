@@ -5,13 +5,14 @@ from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import render, get_object_or_404
 from django.db.models import Count, Q, Max
+from django.db import models
 from django.utils import timezone
 from django.http import Http404
 from datetime import timedelta, datetime
 from music.models import Artist, Album, Track, Scrobble
 from core.exceptions import APIError, DataValidationError
 from .serializers import (
-    ArtistListSerializer, ArtistDetailSerializer,
+    ArtistListSerializer, ArtistDetailSerializer, ArtistStory14Serializer,
     AlbumListSerializer, AlbumDetailSerializer,
     TrackListSerializer, TrackDetailSerializer,
     ScrobbleListSerializer, RecentTracksSerializer,
@@ -367,6 +368,112 @@ class StatsViewSet(viewsets.ViewSet):
             "granularity_options": ["daily", "monthly", "yearly"]
         })
 
+    def is_valid_uuid(self, value):
+        """Check if a string is a valid UUID (for MBID lookup)."""
+        import uuid
+        try:
+            # Convert to string in case it's passed as another type
+            uuid.UUID(str(value))
+            return True
+        except (ValueError, TypeError):
+            return False
+
+    def generate_artist_chart_data(self, request, artist, time_filter):
+        """Generate chart data for a specific artist using existing chart infrastructure."""
+        try:
+            period_display = self.get_period_display(request)
+            granularity = self.get_granularity(request, time_filter)
+
+            # Validate granularity
+            valid_granularities = ['daily', 'monthly', 'yearly']
+            if granularity not in valid_granularities:
+                self.logger.warning(
+                    f"Invalid granularity for artist chart: {granularity}",
+                    extra={'granularity': granularity, 'artist_id': artist.id}
+                )
+                granularity = 'monthly'  # Default fallback
+
+            # Get the appropriate date format for SQLite
+            date_format = self._get_date_trunc_format(granularity)
+
+            # Build the query with artist filtering
+            scrobbles_qs = Scrobble.objects.filter(track__artist=artist)
+
+            # Apply time filtering
+            if time_filter:
+                if isinstance(time_filter, tuple):
+                    # Custom date range: (from_date, to_date)
+                    from_date, to_date = time_filter
+                    if from_date:
+                        scrobbles_qs = scrobbles_qs.filter(timestamp__gte=from_date)
+                    if to_date:
+                        scrobbles_qs = scrobbles_qs.filter(timestamp__lte=to_date)
+                else:
+                    # Period-based filtering: single datetime
+                    scrobbles_qs = scrobbles_qs.filter(timestamp__gte=time_filter)
+
+            # Aggregate by period (using same pattern as existing chart_data method)
+            from django.db.models import Count
+            chart_data = list(scrobbles_qs.extra(
+                select={
+                    'period': f"strftime('{date_format}', timestamp)"
+                }
+            ).values('period').annotate(
+                scrobble_count=Count('id')
+            ).order_by('period'))
+
+            # Limit data points to prevent performance issues (max 366 for daily)
+            if len(chart_data) > 366:
+                chart_data = chart_data[-366:]
+
+            # Format for Chart.js with proper date ranges
+            formatted_data = []
+            for item in chart_data:
+                period_str = item['period']
+
+                # Generate start and end dates based on granularity
+                if granularity == 'daily':
+                    start_date = end_date = period_str
+                elif granularity == 'monthly':
+                    # Convert YYYY-MM to full date range
+                    year, month = period_str.split('-')
+                    start_date = f"{year}-{month}-01"
+                    # Get last day of month
+                    import calendar
+                    last_day = calendar.monthrange(int(year), int(month))[1]
+                    end_date = f"{year}-{month}-{last_day:02d}"
+                else:  # yearly
+                    start_date = f"{period_str}-01-01"
+                    end_date = f"{period_str}-12-31"
+
+                formatted_data.append({
+                    'period': period_str,
+                    'scrobble_count': item['scrobble_count'],
+                    'start_date': start_date,
+                    'end_date': end_date
+                })
+
+            return {
+                'period': period_display,
+                'granularity': granularity,
+                'data': formatted_data,
+                'total_scrobbles': sum(item['scrobble_count'] for item in formatted_data)
+            }
+
+        except Exception as e:
+            self.logger.error(
+                f"Error generating artist chart data",
+                extra={'artist_id': artist.id, 'exception': str(e)},
+                exc_info=True
+            )
+            # Return empty chart data on error
+            return {
+                'period': self.get_period_display(request),
+                'granularity': 'monthly',
+                'data': [],
+                'total_scrobbles': 0
+            }
+
     @action(detail=False)
     def recent_tracks(self, request):
         """
@@ -660,22 +767,67 @@ class StatsViewSet(viewsets.ViewSet):
 
     @action(detail=True)
     def artists(self, request, pk=None):
-        """Get artist detail with statistics."""
+        """Get artist detail with statistics (Story 14 compliant)."""
         try:
-            artist = get_object_or_404(Artist.objects.prefetch_related('albums', 'tracks'), pk=pk)
+            # Support both ID and MBID lookup
+            if self.is_valid_uuid(pk):
+                # MBID lookup
+                artist = get_object_or_404(
+                    Artist.objects.prefetch_related('albums', 'tracks'),
+                    mbid=pk
+                )
+                lookup_type = 'mbid'
+            else:
+                # ID lookup
+                artist = get_object_or_404(
+                    Artist.objects.prefetch_related('albums', 'tracks'),
+                    pk=pk
+                )
+                lookup_type = 'id'
+
             self.logger.info(
                 f"Artist detail requested",
-                extra={'artist_id': pk, 'artist_name': artist.name}
+                extra={
+                    'artist_lookup': pk,
+                    'lookup_type': lookup_type,
+                    'artist_name': artist.name
+                }
             )
-            serializer = ArtistDetailSerializer(artist)
+
+            # Get time filtering parameters
+            time_filter = self.get_time_filter(request)
+            period_display = self.get_period_display(request)
+
+            # Get limit parameter for top lists
+            limit = min(int(request.query_params.get('limit', 10)), 50)
+
+            # Generate chart data for this artist
+            chart_data = self.generate_artist_chart_data(request, artist, time_filter)
+
+            # Create serializer with Story 14 compliance
+            serializer = ArtistStory14Serializer(
+                artist,
+                time_filter=time_filter,
+                period_display=period_display,
+                limit=limit,
+                context={'chart_data': chart_data}
+            )
+
             return Response(serializer.data)
+
         except Http404:
-            self.logger.warning(f"Artist not found", extra={'artist_id': pk})
-            raise APIError(f"Artist with ID {pk} not found", status_code=404)
+            self.logger.warning(
+                f"Artist not found",
+                extra={'artist_lookup': pk, 'lookup_type': lookup_type if 'lookup_type' in locals() else 'unknown'}
+            )
+            raise APIError(f"Artist with {'MBID' if self.is_valid_uuid(pk) else 'ID'} {pk} not found", status_code=404)
+        except APIError:
+            # Re-raise APIError to return proper HTTP status codes
+            raise
         except Exception as e:
             self.logger.error(
                 f"Error retrieving artist detail",
-                extra={'artist_id': pk, 'exception': str(e)},
+                extra={'artist_lookup': pk, 'exception': str(e)},
                 exc_info=True
             )
             raise APIError("Error retrieving artist data", status_code=500)

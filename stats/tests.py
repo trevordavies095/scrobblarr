@@ -766,29 +766,116 @@ class StatsAPITestCase(APITestCase):
         # Should be limited to reasonable number of points
         self.assertLessEqual(len(data['data']), 366)
 
-    def test_artist_detail(self):
-        """Test artist detail endpoint."""
+    def test_artist_detail_story14_format(self):
+        """Test artist detail endpoint returns Story 14 compliant format."""
         url = reverse('stats:artist-detail', kwargs={'pk': self.artist1.id})
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
 
-        self.assertEqual(data['id'], self.artist1.id)
-        self.assertEqual(data['name'], self.artist1.name)
-        self.assertEqual(data['mbid'], self.artist1.mbid)
-        self.assertIn('albums', data)
+        # Check Story 14 top-level structure
+        self.assertIn('artist', data)
+        self.assertIn('top_albums', data)
         self.assertIn('top_tracks', data)
-        self.assertIn('track_count', data)
-        self.assertIn('album_count', data)
-        self.assertIn('scrobble_count', data)
+        self.assertIn('chart_data', data)
 
-        # Check albums are included
-        self.assertTrue(len(data['albums']) > 0)
-        self.assertEqual(data['albums'][0]['name'], self.album1.name)
+        # Check artist object structure
+        artist_data = data['artist']
+        self.assertEqual(artist_data['name'], self.artist1.name)
+        self.assertEqual(artist_data['mbid'], self.artist1.mbid)
+        self.assertIn('total_scrobbles', artist_data)
+        self.assertIn('first_scrobble', artist_data)
+        self.assertIn('last_scrobble', artist_data)
 
-        # Check top tracks are included
-        self.assertTrue(len(data['top_tracks']) > 0)
+        # Check top_albums structure
+        self.assertIsInstance(data['top_albums'], list)
+        if data['top_albums']:
+            album = data['top_albums'][0]
+            self.assertIn('album', album)
+            self.assertIn('scrobble_count', album)
+
+        # Check top_tracks structure
+        self.assertIsInstance(data['top_tracks'], list)
+        if data['top_tracks']:
+            track = data['top_tracks'][0]
+            self.assertIn('track', track)
+            self.assertIn('album', track)
+            self.assertIn('scrobble_count', track)
+
+        # Check chart_data structure
+        chart_data = data['chart_data']
+        self.assertIn('period', chart_data)
+        self.assertIn('granularity', chart_data)
+        self.assertIn('data', chart_data)
+        self.assertIn('total_scrobbles', chart_data)
+
+    def test_artist_detail_mbid_lookup(self):
+        """Test artist detail endpoint with MBID lookup (Story 14)."""
+        url = reverse('stats:artist-detail-mbid', kwargs={'pk': self.artist1.mbid})
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        # Should return same structure as ID lookup
+        self.assertIn('artist', data)
+        self.assertEqual(data['artist']['name'], self.artist1.name)
+        self.assertEqual(data['artist']['mbid'], self.artist1.mbid)
+
+    def test_artist_detail_time_filtering(self):
+        """Test artist detail endpoint with time filtering."""
+        url = reverse('stats:artist-detail', kwargs={'pk': self.artist1.id})
+        response = self.client.get(url, {'period': '30d'})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        # Should still return Story 14 format
+        self.assertIn('artist', data)
+        self.assertIn('top_albums', data)
+        self.assertIn('top_tracks', data)
+        self.assertIn('chart_data', data)
+
+        # Chart data should reflect the period
+        self.assertEqual(data['chart_data']['period'], '30d')
+
+    def test_artist_detail_limit_parameter(self):
+        """Test artist detail endpoint with limit parameter."""
+        url = reverse('stats:artist-detail', kwargs={'pk': self.artist1.id})
+        response = self.client.get(url, {'limit': 5})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        # Top lists should respect limit (if there are enough items)
+        self.assertTrue(len(data['top_albums']) <= 5)
+        self.assertTrue(len(data['top_tracks']) <= 5)
+
+    def test_artist_detail_custom_date_range(self):
+        """Test artist detail endpoint with custom date range."""
+        from_date = '2024-01-01'
+        to_date = '2024-12-31'
+
+        url = reverse('stats:artist-detail', kwargs={'pk': self.artist1.id})
+        response = self.client.get(url, {'from_date': from_date, 'to_date': to_date})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        # Chart data should reflect custom date range
+        self.assertEqual(data['chart_data']['period'], f"{from_date} to {to_date}")
+
+    def test_artist_detail_chart_granularity(self):
+        """Test artist detail endpoint with manual granularity override."""
+        url = reverse('stats:artist-detail', kwargs={'pk': self.artist1.id})
+        response = self.client.get(url, {'granularity': 'monthly'})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        # Chart data should use requested granularity
+        self.assertEqual(data['chart_data']['granularity'], 'monthly')
 
     def test_album_detail(self):
         """Test album detail endpoint."""
@@ -840,9 +927,17 @@ class StatsAPITestCase(APITestCase):
         expected_count = self.track1.scrobbles.count()
         self.assertEqual(data['scrobble_count'], expected_count)
 
-    def test_artist_detail_not_found(self):
+    def test_artist_detail_not_found_id(self):
         """Test artist detail with non-existent ID."""
         url = reverse('stats:artist-detail', kwargs={'pk': 99999})
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_artist_detail_not_found_mbid(self):
+        """Test artist detail with non-existent MBID."""
+        fake_mbid = '12345678-1234-5678-9012-123456789012'
+        url = reverse('stats:artist-detail-mbid', kwargs={'pk': fake_mbid})
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

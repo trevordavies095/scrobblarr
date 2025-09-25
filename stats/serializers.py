@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from music.models import Artist, Album, Track, Scrobble
-from django.db.models import Count
+from django.db.models import Count, Q
 import logging
 
 logger = logging.getLogger('stats.serializers')
@@ -198,3 +198,114 @@ class ArtistDetailSerializer(serializers.ModelSerializer):
 
     def get_scrobble_count(self, obj):
         return obj.get_scrobble_count()
+
+
+class ArtistStory14Serializer(serializers.Serializer):
+    """
+    Story 14 compliant serializer for artist detail API.
+    Returns nested structure with artist info, top albums, top tracks, and chart data.
+    """
+    artist = serializers.SerializerMethodField()
+    top_albums = serializers.SerializerMethodField()
+    top_tracks = serializers.SerializerMethodField()
+    chart_data = serializers.SerializerMethodField()
+
+    def __init__(self, *args, **kwargs):
+        # Extract context parameters
+        self.time_filter = kwargs.pop('time_filter', None)
+        self.period_display = kwargs.pop('period_display', 'all')
+        self.limit = kwargs.pop('limit', 10)
+        super().__init__(*args, **kwargs)
+
+    def get_artist(self, obj):
+        """Get basic artist information with scrobble stats."""
+        # Get first and last scrobble dates
+        scrobble_qs = Scrobble.objects.filter(track__artist=obj)
+        if self.time_filter:
+            if isinstance(self.time_filter, tuple):
+                # Custom date range: (from_date, to_date)
+                from_date, to_date = self.time_filter
+                if from_date:
+                    scrobble_qs = scrobble_qs.filter(timestamp__gte=from_date)
+                if to_date:
+                    scrobble_qs = scrobble_qs.filter(timestamp__lte=to_date)
+            else:
+                # Period-based filtering: single datetime
+                scrobble_qs = scrobble_qs.filter(timestamp__gte=self.time_filter)
+
+        first_scrobble = scrobble_qs.order_by('timestamp').first()
+        last_scrobble = scrobble_qs.order_by('-timestamp').first()
+
+        return {
+            'name': obj.name,
+            'mbid': obj.mbid,
+            'total_scrobbles': scrobble_qs.count(),
+            'first_scrobble': first_scrobble.timestamp.isoformat() + 'Z' if first_scrobble else None,
+            'last_scrobble': last_scrobble.timestamp.isoformat() + 'Z' if last_scrobble else None
+        }
+
+    def get_top_albums(self, obj):
+        """Get top albums by this artist with scrobble counts."""
+        albums_qs = Album.objects.filter(artist=obj)
+
+        # Apply time filtering to scrobbles
+        scrobble_filter = Q()
+        if self.time_filter:
+            if isinstance(self.time_filter, tuple):
+                # Custom date range: (from_date, to_date)
+                from_date, to_date = self.time_filter
+                if from_date:
+                    scrobble_filter &= Q(tracks__scrobbles__timestamp__gte=from_date)
+                if to_date:
+                    scrobble_filter &= Q(tracks__scrobbles__timestamp__lte=to_date)
+            else:
+                # Period-based filtering: single datetime
+                scrobble_filter = Q(tracks__scrobbles__timestamp__gte=self.time_filter)
+
+        albums_with_counts = albums_qs.annotate(
+            scrobble_count=Count('tracks__scrobbles', filter=scrobble_filter)
+        ).filter(scrobble_count__gt=0).order_by('-scrobble_count')[:self.limit]
+
+        return [
+            {
+                'album': album.name,
+                'scrobble_count': album.scrobble_count
+            }
+            for album in albums_with_counts
+        ]
+
+    def get_top_tracks(self, obj):
+        """Get top tracks by this artist with scrobble counts."""
+        tracks_qs = Track.objects.filter(artist=obj)
+
+        # Apply time filtering to scrobbles
+        scrobble_filter = Q()
+        if self.time_filter:
+            if isinstance(self.time_filter, tuple):
+                # Custom date range: (from_date, to_date)
+                from_date, to_date = self.time_filter
+                if from_date:
+                    scrobble_filter &= Q(scrobbles__timestamp__gte=from_date)
+                if to_date:
+                    scrobble_filter &= Q(scrobbles__timestamp__lte=to_date)
+            else:
+                # Period-based filtering: single datetime
+                scrobble_filter = Q(scrobbles__timestamp__gte=self.time_filter)
+
+        tracks_with_counts = tracks_qs.annotate(
+            scrobble_count=Count('scrobbles', filter=scrobble_filter)
+        ).filter(scrobble_count__gt=0).order_by('-scrobble_count')[:self.limit]
+
+        return [
+            {
+                'track': track.name,
+                'album': track.album.name if track.album else None,
+                'scrobble_count': track.scrobble_count
+            }
+            for track in tracks_with_counts
+        ]
+
+    def get_chart_data(self, obj):
+        """Get chart data for this artist using existing chart infrastructure."""
+        # This will be populated by the view with chart data
+        return self.context.get('chart_data', {})
