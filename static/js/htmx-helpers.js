@@ -189,6 +189,8 @@ function initializeNewContent(target) {
     // Initialize charts if Chart.js is loaded
     if (typeof Chart !== 'undefined') {
         initializeCharts(target);
+    } else if (target.querySelector('[data-chart]')) {
+        console.warn('Chart.js not loaded but chart elements found');
     }
 
     // Initialize time period selectors in new content
@@ -442,7 +444,7 @@ function initializeForms(container = document) {
     const forms = container.querySelectorAll('form[hx-post], form[hx-put], form[hx-patch]');
 
     forms.forEach(form => {
-        form.addEventListener('submit', function(e) {
+        form.addEventListener('submit', function() {
             const submitButton = form.querySelector('button[type="submit"]');
             if (submitButton) {
                 submitButton.disabled = true;

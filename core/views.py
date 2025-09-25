@@ -188,19 +188,207 @@ def index(request):
 
 def recent_tracks(request):
     """
-    Recent tracks page (placeholder for Phase 3).
+    Recent tracks page with pagination, search, and filtering capabilities.
     """
-    context = {
-        'breadcrumbs': [
-            {'title': 'Home', 'url': '/'},
-            {'title': 'Recent Tracks'},
-        ]
-    }
-    return render(request, 'core/coming_soon.html', {
-        'page_title': 'Recent Tracks',
-        'description': 'View your complete recent listening history with filtering and search capabilities.',
-        **context
+    from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+    from django.db.models import Q
+    from datetime import datetime
+
+    logger.info("Loading recent tracks page", extra={
+        'user_agent': request.META.get('HTTP_USER_AGENT', ''),
+        'remote_addr': request.META.get('REMOTE_ADDR')
     })
+
+    start_time = timezone.now()
+
+    # Get query parameters
+    search_query = request.GET.get('search', '').strip()
+    date_from = request.GET.get('date_from', '').strip()
+    date_to = request.GET.get('date_to', '').strip()
+    per_page = request.GET.get('per_page', '50')
+    page = request.GET.get('page', '1')
+    export_format = request.GET.get('export', '').strip()
+
+    # Validate per_page parameter
+    try:
+        per_page = int(per_page)
+        if per_page not in [25, 50, 100]:
+            per_page = 50
+    except (ValueError, TypeError):
+        per_page = 50
+
+    try:
+        # Base queryset with optimized joins
+        queryset = Scrobble.objects.select_related(
+            'track', 'track__artist', 'track__album'
+        ).order_by('-timestamp')
+
+        # Apply search filter
+        if search_query:
+            queryset = queryset.filter(
+                Q(track__name__icontains=search_query) |
+                Q(track__artist__name__icontains=search_query) |
+                Q(track__album__name__icontains=search_query)
+            )
+
+        # Apply date range filters
+        if date_from:
+            try:
+                date_from_parsed = datetime.strptime(date_from, '%Y-%m-%d').date()
+                queryset = queryset.filter(timestamp__date__gte=date_from_parsed)
+            except ValueError:
+                logger.warning(f"Invalid date_from format: {date_from}")
+
+        if date_to:
+            try:
+                date_to_parsed = datetime.strptime(date_to, '%Y-%m-%d').date()
+                queryset = queryset.filter(timestamp__date__lte=date_to_parsed)
+            except ValueError:
+                logger.warning(f"Invalid date_to format: {date_to}")
+
+        # Handle export functionality
+        if export_format == 'csv':
+            logger.info("Exporting recent tracks to CSV", extra={
+                'search_query': search_query,
+                'date_from': date_from,
+                'date_to': date_to,
+                'total_count': queryset.count()
+            })
+            return _export_recent_tracks_csv(queryset[:10000])  # Limit export to 10k tracks
+
+        # Pagination
+        paginator = Paginator(queryset, per_page)
+
+        try:
+            scrobbles_page = paginator.page(page)
+        except PageNotAnInteger:
+            scrobbles_page = paginator.page(1)
+        except EmptyPage:
+            scrobbles_page = paginator.page(paginator.num_pages)
+
+        # Format scrobbles for display
+        scrobbles_formatted = []
+        for scrobble in scrobbles_page:
+            track_data = {
+                'id': scrobble.id,
+                'track_id': scrobble.track.id,
+                'artist_id': scrobble.track.artist.id,
+                'album_id': scrobble.track.album.id if scrobble.track.album else None,
+                'track_name': scrobble.track.name,
+                'artist_name': scrobble.track.artist.name,
+                'album_name': scrobble.track.album.name if scrobble.track.album else '',
+                'timestamp': scrobble.timestamp,
+                'relative_time': _format_relative_time(scrobble.timestamp),
+                'duration': scrobble.track.get_duration_formatted() if scrobble.track.duration else None,
+            }
+            scrobbles_formatted.append(track_data)
+
+        # Pagination info
+        pagination_info = {
+            'current_page': scrobbles_page.number,
+            'total_pages': paginator.num_pages,
+            'total_count': paginator.count,
+            'per_page': per_page,
+            'has_previous': scrobbles_page.has_previous(),
+            'has_next': scrobbles_page.has_next(),
+            'previous_page': scrobbles_page.previous_page_number() if scrobbles_page.has_previous() else None,
+            'next_page': scrobbles_page.next_page_number() if scrobbles_page.has_next() else None,
+            'start_index': scrobbles_page.start_index(),
+            'end_index': scrobbles_page.end_index(),
+        }
+
+        # Generate page range for pagination (show 5 pages around current)
+        page_range_start = max(1, scrobbles_page.number - 2)
+        page_range_end = min(paginator.num_pages + 1, scrobbles_page.number + 3)
+        pagination_info['page_range'] = range(page_range_start, page_range_end)
+
+        context = {
+            'scrobbles': scrobbles_formatted,
+            'pagination': pagination_info,
+            'search_query': search_query,
+            'date_from': date_from,
+            'date_to': date_to,
+            'per_page': per_page,
+            'breadcrumbs': [
+                {'title': 'Home', 'url': '/'},
+                {'title': 'Recent Tracks', 'url': None},
+            ],
+            'page_title': 'Recent Tracks',
+            'error': None,
+        }
+
+        # Calculate performance metrics
+        load_time = (timezone.now() - start_time).total_seconds()
+        logger.info("Recent tracks page loaded", extra={
+            'load_time_seconds': load_time,
+            'total_scrobbles': paginator.count,
+            'current_page': scrobbles_page.number,
+            'per_page': per_page,
+            'search_query': search_query,
+            'has_filters': bool(search_query or date_from or date_to)
+        })
+
+    except Exception as e:
+        logger.error("Error loading recent tracks page", exc_info=True)
+
+        # Fallback context for error states
+        context = {
+            'scrobbles': [],
+            'pagination': {
+                'current_page': 1,
+                'total_pages': 0,
+                'total_count': 0,
+                'per_page': per_page,
+                'has_previous': False,
+                'has_next': False,
+                'page_range': [],
+            },
+            'search_query': search_query,
+            'date_from': date_from,
+            'date_to': date_to,
+            'per_page': per_page,
+            'breadcrumbs': [
+                {'title': 'Home', 'url': '/'},
+                {'title': 'Recent Tracks', 'url': None},
+            ],
+            'page_title': 'Recent Tracks',
+            'error': 'Failed to load recent tracks. Please try again.',
+        }
+
+    # Handle partial template requests for htmx updates
+    partial = request.GET.get('partial')
+    if partial:
+        if partial == 'list':
+            return render(request, 'core/partials/recent_tracks_list.html', context)
+        elif partial == 'pagination':
+            return render(request, 'core/partials/recent_tracks_pagination.html', context)
+
+    return render(request, 'core/recent_tracks.html', context)
+
+
+def _export_recent_tracks_csv(queryset):
+    """
+    Export recent tracks to CSV format.
+    """
+    import csv
+    from django.http import HttpResponse
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="recent_tracks_{timezone.now().strftime("%Y%m%d_%H%M%S")}.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow(['Timestamp', 'Track', 'Artist', 'Album', 'Relative Time'])
+
+    for scrobble in queryset:
+        writer.writerow([
+            scrobble.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            scrobble.track.name,
+            scrobble.track.artist.name,
+            scrobble.track.album.name if scrobble.track.album else '',
+            _format_relative_time(scrobble.timestamp)
+        ])
+
+    return response
 
 
 def top_artists(request):

@@ -415,16 +415,273 @@ window.ScrobblarrUtils = {
     getPreferredColorScheme
 };
 
-// Global error handler
+// Global error handler - now defined after ScrobblarrUtils
 window.addEventListener('error', function(e) {
     console.error('JavaScript error:', e.error);
-    showError('An unexpected error occurred. Please try again.');
+    // Check if showError is available before calling it
+    if (typeof showError === 'function') {
+        showError('An unexpected error occurred. Please try again.');
+    } else if (window.ScrobblarrUtils && typeof window.ScrobblarrUtils.showError === 'function') {
+        window.ScrobblarrUtils.showError('An unexpected error occurred. Please try again.');
+    } else {
+        // Fallback to console if showError is not available
+        console.warn('Error display function not available, logging error only');
+    }
 });
 
-// Global unhandled promise rejection handler
+// Global unhandled promise rejection handler - now defined after ScrobblarrUtils
 window.addEventListener('unhandledrejection', function(e) {
     console.error('Unhandled promise rejection:', e.reason);
-    showError('An unexpected error occurred. Please try again.');
+    // Check if showError is available before calling it
+    if (typeof showError === 'function') {
+        showError('An unexpected error occurred. Please try again.');
+    } else if (window.ScrobblarrUtils && typeof window.ScrobblarrUtils.showError === 'function') {
+        window.ScrobblarrUtils.showError('An unexpected error occurred. Please try again.');
+    } else {
+        // Fallback to console if showError is not available
+        console.warn('Error display function not available, logging error only');
+    }
+});
+
+/**
+ * Recent Tracks Page Functionality
+ */
+function initializeRecentTracksPage() {
+    const recentTracksForm = document.querySelector('.recent-tracks-filters');
+    if (!recentTracksForm) return;
+
+    // Debounced search functionality
+    const searchInput = document.getElementById('search');
+    if (searchInput) {
+        const debouncedSearch = debounce(() => {
+            htmx.trigger(recentTracksForm, 'submit');
+        }, 300);
+
+        searchInput.addEventListener('input', debouncedSearch);
+    }
+
+    // Date range validation
+    const dateFromInput = document.getElementById('date_from');
+    const dateToInput = document.getElementById('date_to');
+
+    if (dateFromInput && dateToInput) {
+        dateFromInput.addEventListener('change', function() {
+            if (dateToInput.value && this.value > dateToInput.value) {
+                showError('Start date cannot be after end date.');
+                this.value = '';
+            }
+        });
+
+        dateToInput.addEventListener('change', function() {
+            if (dateFromInput.value && this.value < dateFromInput.value) {
+                showError('End date cannot be before start date.');
+                this.value = '';
+            }
+        });
+    }
+
+    // Save filter preferences to localStorage
+    const filterInputs = recentTracksForm.querySelectorAll('input, select');
+    filterInputs.forEach(input => {
+        // Load saved preferences
+        const savedValue = getLocalStorage(`recent_tracks_${input.name}`);
+        if (savedValue && !input.value) {
+            input.value = savedValue;
+        }
+
+        // Save preferences on change
+        input.addEventListener('change', function() {
+            if (this.value) {
+                setLocalStorage(`recent_tracks_${this.name}`, this.value);
+            } else {
+                removeLocalStorage(`recent_tracks_${this.name}`);
+            }
+        });
+    });
+
+    // Clear filters functionality
+    window.clearRecentTracksFilters = function() {
+        // Clear form inputs
+        searchInput.value = '';
+        if (dateFromInput) dateFromInput.value = '';
+        if (dateToInput) dateToInput.value = '';
+
+        const perPageSelect = document.getElementById('per_page');
+        if (perPageSelect) perPageSelect.value = '50';
+
+        // Clear localStorage
+        ['search', 'date_from', 'date_to', 'per_page'].forEach(key => {
+            removeLocalStorage(`recent_tracks_${key}`);
+        });
+
+        // Trigger form submission
+        htmx.trigger(recentTracksForm, 'submit');
+    };
+
+    // Export functionality
+    window.exportRecentTracks = function() {
+        const formData = new FormData(recentTracksForm);
+        formData.set('export', 'csv');
+
+        const params = new URLSearchParams(formData);
+        const url = window.location.pathname + '?' + params.toString();
+
+        // Create temporary link and click it
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = '';
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        showSuccess('Export started. Your download should begin shortly.');
+    };
+}
+
+/**
+ * Advanced Pagination Functionality
+ */
+function initializePagination() {
+    // Handle keyboard navigation for pagination
+    document.addEventListener('keydown', function(e) {
+        if (e.target.classList.contains('pagination-btn')) {
+            if (e.key === 'ArrowLeft') {
+                const prevBtn = document.querySelector('.pagination-btn-prev');
+                if (prevBtn && !prevBtn.disabled) {
+                    prevBtn.focus();
+                }
+            } else if (e.key === 'ArrowRight') {
+                const nextBtn = document.querySelector('.pagination-btn-next');
+                if (nextBtn && !nextBtn.disabled) {
+                    nextBtn.focus();
+                }
+            }
+        }
+    });
+
+    // Track current page for analytics
+    const currentPage = getQueryParam('page') || '1';
+    setLocalStorage('recent_tracks_last_page', currentPage);
+}
+
+/**
+ * Enhanced Search Functionality
+ */
+function initializeAdvancedSearch() {
+    const searchInput = document.getElementById('search');
+    if (!searchInput) return;
+
+    // Search suggestions (future enhancement)
+    let searchHistory = getLocalStorage('search_history', []);
+
+    searchInput.addEventListener('focus', function() {
+        // Could show recent searches dropdown here
+        console.log('Search history:', searchHistory);
+    });
+
+    // Track search queries
+    searchInput.addEventListener('input', function() {
+        if (this.value.length >= 3 && !searchHistory.includes(this.value)) {
+            searchHistory.unshift(this.value);
+            searchHistory = searchHistory.slice(0, 10); // Keep last 10 searches
+            setLocalStorage('search_history', searchHistory);
+        }
+    });
+
+    // Search shortcuts
+    document.addEventListener('keydown', function(e) {
+        // Ctrl/Cmd + F to focus search
+        if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+            const currentPage = window.location.pathname;
+            if (currentPage === '/recent/') {
+                e.preventDefault();
+                searchInput.focus();
+                searchInput.select();
+            }
+        }
+
+        // Escape to clear search
+        if (e.key === 'Escape' && document.activeElement === searchInput) {
+            searchInput.value = '';
+            searchInput.blur();
+            // Trigger search update
+            const form = searchInput.closest('form');
+            if (form) {
+                htmx.trigger(form, 'submit');
+            }
+        }
+    });
+}
+
+/**
+ * Table Enhancement Functions
+ */
+function initializeTableEnhancements() {
+    // Add hover effects and click handlers for future detail pages
+    const trackRows = document.querySelectorAll('.recent-tracks-table tbody tr');
+
+    trackRows.forEach(row => {
+        // Add keyboard navigation
+        row.setAttribute('tabindex', '0');
+        row.setAttribute('role', 'button');
+
+        row.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                // Future: Navigate to track details
+                console.log('Track selected:', this);
+            }
+        });
+
+        // Double-click for future detail view
+        row.addEventListener('dblclick', function() {
+            // Future: Navigate to track details
+            console.log('Track double-clicked:', this);
+        });
+    });
+}
+
+/**
+ * Performance Monitoring
+ */
+function initializePerformanceMonitoring() {
+    // Track page load time
+    window.addEventListener('load', function() {
+        const perfData = performance.getEntriesByType('navigation')[0];
+        if (perfData) {
+            console.log('Page load time:', perfData.loadEventEnd - perfData.loadEventStart, 'ms');
+        }
+    });
+
+    // Track htmx request performance
+    document.addEventListener('htmx:afterRequest', function(e) {
+        const requestTime = e.detail.requestConfig.timeout;
+        console.log('htmx request completed in:', Date.now() - e.detail.requestConfig.startTime, 'ms');
+    });
+}
+
+// Initialize recent tracks functionality when on the recent tracks page
+document.addEventListener('DOMContentLoaded', function() {
+    if (window.location.pathname === '/recent/') {
+        initializeRecentTracksPage();
+        initializePagination();
+        initializeAdvancedSearch();
+        initializeTableEnhancements();
+        initializePerformanceMonitoring();
+    }
+});
+
+// Reinitialize after htmx updates
+document.addEventListener('htmx:afterSwap', function(e) {
+    if (e.target.id === 'recent-tracks-content') {
+        initializeTableEnhancements();
+
+        // Announce results to screen readers
+        const resultsInfo = document.querySelector('.results-text');
+        if (resultsInfo) {
+            announceToScreenReader(resultsInfo.textContent);
+        }
+    }
 });
 
 // Prevent accidental form submissions

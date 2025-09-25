@@ -1,0 +1,93 @@
+{% load tz %}
+<!-- Results Info -->
+<div class="results-info">
+    <div class="results-text">
+        {% if pagination.total_count > 0 %}
+            Showing {{ pagination.start_index }}-{{ pagination.end_index }} of {{ pagination.total_count|floatformat:"0" }} tracks
+            {% if search_query or date_from or date_to %}
+                (filtered)
+            {% endif %}
+        {% else %}
+            No tracks found
+            {% if search_query or date_from or date_to %}
+                for the current filters
+            {% endif %}
+        {% endif %}
+    </div>
+    {% if pagination.total_count > 0 %}
+        <a href="javascript:exportRecentTracks()" class="export-link">
+            Export CSV
+        </a>
+    {% endif %}
+</div>
+
+{% if error %}
+    <!-- Error State -->
+    <div class="error-message" role="alert">
+        <p>{{ error }}</p>
+    </div>
+{% elif scrobbles %}
+    <!-- Tracks Table -->
+    <div class="table-container">
+        <table class="recent-tracks-table">
+            <thead>
+                <tr>
+                    <th>Track</th>
+                    <th>Artist</th>
+                    <th>Album</th>
+                    <th>Time</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for scrobble in scrobbles %}
+                <tr>
+                    <td>
+                        <span class="track-name">{{ scrobble.track_name }}</span>
+                    </td>
+                    <td>
+                        <!-- Future: Link to artist detail page -->
+                        <span class="artist-link" title="View artist details (coming soon)">
+                            {{ scrobble.artist_name }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if scrobble.album_name %}
+                            <!-- Future: Link to album detail page -->
+                            <span class="album-link" title="View album details (coming soon)">
+                                {{ scrobble.album_name }}
+                            </span>
+                        {% else %}
+                            <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="timestamp-cell">
+                        <span class="relative-time">{{ scrobble.relative_time }}</span>
+                        <span class="absolute-time">{{ scrobble.timestamp|localtime|date:"j M g:iA" }}</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    {% include 'core/partials/recent_tracks_pagination.html' %}
+
+{% else %}
+    <!-- Empty State -->
+    <div class="empty-state">
+        <div class="empty-state-icon">🎵</div>
+        <h3>No tracks found</h3>
+        {% if search_query or date_from or date_to %}
+            <p>Try adjusting your search criteria or date range.</p>
+            <button type="button" class="btn btn-primary" onclick="clearRecentTracksFilters()">
+                Clear Filters
+            </button>
+        {% else %}
+            <p>Import some scrobble data to get started!</p>
+            <a href="/admin/" class="btn btn-primary">
+                Go to Admin
+            </a>
+        {% endif %}
+    </div>
+{% endif %}

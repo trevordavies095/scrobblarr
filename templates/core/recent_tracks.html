@@ -1,0 +1,327 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ page_title }} - Scrobblarr{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Recent tracks specific styles */
+.recent-tracks-header {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    margin-bottom: 2rem;
+}
+
+.recent-tracks-title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-primary, #ffffff);
+    margin: 0;
+}
+
+.recent-tracks-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: end;
+    background: var(--card-bg, #2a2a2a);
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border-color, #404040);
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 200px;
+}
+
+.filter-label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-secondary, #cccccc);
+    margin: 0;
+}
+
+.filter-input {
+    background: var(--input-bg, #1a1a1a);
+    border: 1px solid var(--input-border, #404040);
+    border-radius: 0.375rem;
+    padding: 0.75rem;
+    color: var(--text-primary, #ffffff);
+    font-size: 0.875rem;
+    transition: border-color 0.2s;
+}
+
+.filter-input:focus {
+    outline: none;
+    border-color: var(--accent-color, #007acc);
+    box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.2);
+}
+
+.filter-select {
+    background: var(--input-bg, #1a1a1a);
+    border: 1px solid var(--input-border, #404040);
+    border-radius: 0.375rem;
+    padding: 0.75rem;
+    color: var(--text-primary, #ffffff);
+    font-size: 0.875rem;
+    cursor: pointer;
+    min-width: 120px;
+}
+
+.filter-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+}
+
+.btn {
+    padding: 0.75rem 1rem;
+    border-radius: 0.375rem;
+    border: none;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: all 0.2s;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-primary {
+    background: var(--accent-color, #007acc);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--accent-hover, #005a99);
+}
+
+.btn-secondary {
+    background: var(--card-bg, #2a2a2a);
+    color: var(--text-primary, #ffffff);
+    border: 1px solid var(--border-color, #404040);
+}
+
+.btn-secondary:hover {
+    background: var(--hover-bg, #404040);
+}
+
+.results-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding: 1rem;
+    background: var(--card-bg, #2a2a2a);
+    border-radius: 0.375rem;
+    border: 1px solid var(--border-color, #404040);
+}
+
+.results-text {
+    color: var(--text-secondary, #cccccc);
+    font-size: 0.875rem;
+}
+
+.export-link {
+    color: var(--accent-color, #007acc);
+    text-decoration: none;
+    font-size: 0.875rem;
+}
+
+.export-link:hover {
+    text-decoration: underline;
+}
+
+.recent-tracks-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--card-bg, #2a2a2a);
+    border-radius: 0.5rem;
+    border: 1px solid var(--border-color, #404040);
+    overflow: hidden;
+}
+
+.recent-tracks-table th,
+.recent-tracks-table td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color, #404040);
+}
+
+.recent-tracks-table th {
+    background: var(--header-bg, #333333);
+    color: var(--text-primary, #ffffff);
+    font-weight: 600;
+    font-size: 0.875rem;
+}
+
+.recent-tracks-table tr:last-child td {
+    border-bottom: none;
+}
+
+.recent-tracks-table tr:hover {
+    background: var(--hover-bg, rgba(64, 64, 64, 0.3));
+}
+
+.track-name {
+    font-weight: 500;
+    color: var(--text-primary, #ffffff);
+}
+
+.artist-link,
+.album-link {
+    color: var(--accent-color, #007acc);
+    text-decoration: none;
+}
+
+.artist-link:hover,
+.album-link:hover {
+    text-decoration: underline;
+}
+
+.timestamp-cell {
+    color: var(--text-secondary, #cccccc);
+    font-size: 0.875rem;
+}
+
+.relative-time {
+    display: block;
+}
+
+.absolute-time {
+    display: block;
+    font-size: 0.75rem;
+    opacity: 0.7;
+    margin-top: 0.25rem;
+}
+
+.duration {
+    color: var(--text-secondary, #cccccc);
+    font-size: 0.875rem;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: var(--text-secondary, #cccccc);
+}
+
+.empty-state-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .recent-tracks-filters {
+        flex-direction: column;
+    }
+
+    .filter-group {
+        min-width: unset;
+        width: 100%;
+    }
+
+    .results-info {
+        flex-direction: column;
+        gap: 0.5rem;
+        align-items: flex-start;
+    }
+
+    .recent-tracks-table {
+        font-size: 0.875rem;
+    }
+
+    .recent-tracks-table th,
+    .recent-tracks-table td {
+        padding: 0.75rem 0.5rem;
+    }
+
+    .absolute-time {
+        display: none;
+    }
+}
+
+@media (max-width: 480px) {
+    .recent-tracks-table th:nth-child(3),
+    .recent-tracks-table td:nth-child(3) {
+        display: none;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="recent-tracks-page">
+    <!-- Page Header -->
+    <header class="recent-tracks-header">
+        <h1 class="recent-tracks-title">Recent Tracks</h1>
+
+        <!-- Filters -->
+        <form class="recent-tracks-filters"
+              hx-get="{% url 'core:recent' %}"
+              hx-target="#recent-tracks-content"
+              hx-trigger="submit, change delay:300ms from:input[type=text], change from:select, change from:input[type=date]"
+              hx-vals='{"partial": "list"}'>
+
+            <div class="filter-group">
+                <label for="search" class="filter-label">Search tracks, artists, or albums</label>
+                <input type="text"
+                       id="search"
+                       name="search"
+                       class="filter-input"
+                       placeholder="Search..."
+                       value="{{ search_query }}"
+                       autocomplete="off">
+            </div>
+
+            <div class="filter-group">
+                <label for="date_from" class="filter-label">From date</label>
+                <input type="date"
+                       id="date_from"
+                       name="date_from"
+                       class="filter-input"
+                       value="{{ date_from }}">
+            </div>
+
+            <div class="filter-group">
+                <label for="date_to" class="filter-label">To date</label>
+                <input type="date"
+                       id="date_to"
+                       name="date_to"
+                       class="filter-input"
+                       value="{{ date_to }}">
+            </div>
+
+            <div class="filter-group">
+                <label for="per_page" class="filter-label">Items per page</label>
+                <select id="per_page" name="per_page" class="filter-select">
+                    <option value="25"{% if per_page == 25 %} selected{% endif %}>25</option>
+                    <option value="50"{% if per_page == 50 %} selected{% endif %}>50</option>
+                    <option value="100"{% if per_page == 100 %} selected{% endif %}>100</option>
+                </select>
+            </div>
+
+            <div class="filter-actions">
+                <button type="submit" class="btn btn-primary">Update</button>
+                <button type="button" class="btn btn-secondary" onclick="clearRecentTracksFilters()">Clear</button>
+            </div>
+        </form>
+    </header>
+
+    <!-- Content Area -->
+    <div id="recent-tracks-content">
+        {% include 'core/partials/recent_tracks_list.html' %}
+    </div>
+</div>
+
+<script>
+// Functions are now defined in base.js
+// clearRecentTracksFilters() and exportRecentTracks() are available globally
+</script>
+{% endblock %}

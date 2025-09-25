@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load dashboard_extras %}
+{% load tz %}
 
 {% block title %}Home - Scrobblarr{% endblock %}
 
@@ -92,7 +93,6 @@
                         <th>Track</th>
                         <th>Artist</th>
                         <th class="hidden-mobile">Album</th>
-                        <th class="hidden-mobile">Duration</th>
                         <th>Time</th>
                     </tr>
                 </thead>
@@ -117,15 +117,8 @@
                                 <span class="table-meta-empty">Unknown Album</span>
                             {% endif %}
                         </td>
-                        <td class="table-meta hidden-mobile">
-                            {% if track.duration %}
-                                <span class="track-duration">{{ track.duration }}</span>
-                            {% else %}
-                                <span class="table-meta-empty">--</span>
-                            {% endif %}
-                        </td>
                         <td class="table-meta">
-                            <time datetime="{{ track.timestamp|date:'c' }}" title="{{ track.timestamp|date:'Y-m-d H:i:s' }}" class="relative-time">
+                            <time datetime="{{ track.timestamp|date:'c' }}" title="{{ track.timestamp|localtime|date:'Y-m-d H:i:s' }}" class="relative-time">
                                 {{ track.relative_time }}
                             </time>
                         </td>
