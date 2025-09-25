@@ -949,19 +949,183 @@ def top_tracks(request):
 
 def charts(request):
     """
-    Charts and visualization page (placeholder for Phase 3).
+    Charts and visualization page with interactive scrobbles over time visualization.
+    Implements Story 25: Charts & Visualization Page requirements.
     """
+    import requests
+    import json
+
+    logger.info("Loading charts page", extra={
+        'user_agent': request.META.get('HTTP_USER_AGENT', ''),
+        'remote_addr': request.META.get('REMOTE_ADDR')
+    })
+
+    start_time = timezone.now()
+
+    # Get query parameters with defaults
+    time_period = request.GET.get('period', 'all').strip().lower()
+    granularity = request.GET.get('granularity', 'auto').strip().lower()
+    date_from = request.GET.get('date_from', '').strip()
+    date_to = request.GET.get('date_to', '').strip()
+
+    # Validate time period parameter
+    valid_periods = ['7d', '30d', '90d', '180d', '365d', 'all']
+    if time_period not in valid_periods:
+        time_period = 'all'
+
+    # Validate granularity parameter
+    valid_granularities = ['auto', 'daily', 'monthly', 'yearly']
+    if granularity not in valid_granularities:
+        granularity = 'auto'
+
+    try:
+        # Build API request to chart data endpoint
+        api_url = f"http://127.0.0.1:8000/api/scrobbles/chart/"
+        api_params = {}
+
+        # Add time period or custom date range
+        if date_from and date_to:
+            # Custom date range mode
+            api_params['date_from'] = date_from
+            api_params['date_to'] = date_to
+            period_display = f"{date_from} to {date_to}"
+        elif time_period != 'all':
+            # Time period mode
+            api_params['period'] = time_period
+            period_display = time_period.replace('d', ' days').replace('all', 'All Time').title()
+        else:
+            period_display = 'All Time'
+
+        # Add granularity if not auto
+        if granularity != 'auto':
+            api_params['granularity'] = granularity
+
+        # Make API request with timeout
+        api_response = requests.get(api_url, params=api_params, timeout=15)
+
+        if api_response.status_code == 200:
+            api_data = api_response.json()
+
+            # Extract chart data from API response
+            chart_points = api_data.get('data', [])
+            total_scrobbles = api_data.get('total_scrobbles', 0)
+            actual_granularity = api_data.get('granularity', 'daily')
+            actual_period = api_data.get('period', period_display)
+
+            # Format chart data for Chart.js
+            chart_labels = [point.get('period', '') for point in chart_points]
+            chart_values = [point.get('scrobble_count', 0) for point in chart_points]
+
+            # Calculate some statistics for display
+            max_scrobbles = max(chart_values) if chart_values else 0
+            avg_scrobbles = round(sum(chart_values) / len(chart_values), 1) if chart_values else 0
+
+            chart_success = True
+            chart_error = None
+
+        else:
+            # API error fallback
+            logger.error(f"Chart API error: {api_response.status_code}")
+            chart_labels = []
+            chart_values = []
+            total_scrobbles = 0
+            max_scrobbles = 0
+            avg_scrobbles = 0
+            actual_granularity = granularity if granularity != 'auto' else 'daily'
+            actual_period = period_display
+            chart_success = False
+            chart_error = f"Failed to load chart data (HTTP {api_response.status_code})"
+
+    except requests.RequestException as e:
+        logger.error("Failed to fetch chart data from API", exc_info=True)
+        # Fallback to empty state
+        chart_labels = []
+        chart_values = []
+        total_scrobbles = 0
+        max_scrobbles = 0
+        avg_scrobbles = 0
+        actual_granularity = granularity if granularity != 'auto' else 'daily'
+        actual_period = period_display
+        chart_success = False
+        chart_error = "Unable to connect to chart data service"
+
+    except Exception as e:
+        logger.error("Error loading charts page", exc_info=True)
+        # Fallback to empty state
+        chart_labels = []
+        chart_values = []
+        total_scrobbles = 0
+        max_scrobbles = 0
+        avg_scrobbles = 0
+        actual_granularity = 'daily'
+        actual_period = 'All Time'
+        chart_success = False
+        chart_error = "An unexpected error occurred while loading chart data"
+
+    # Build context for template
+    chart_data_dict = {
+        'labels': chart_labels,
+        'values': chart_values,
+        'success': chart_success,
+        'error': chart_error,
+    }
+
     context = {
+        'chart_data': json.dumps(chart_data_dict),  # JSON string for JavaScript
+        'chart_data_dict': chart_data_dict,  # Python dict for template conditionals
+        'chart_stats': {
+            'total_scrobbles': total_scrobbles,
+            'max_scrobbles': max_scrobbles,
+            'avg_scrobbles': avg_scrobbles,
+            'data_points': len(chart_labels),
+            'period_display': actual_period,
+            'granularity': actual_granularity.title(),
+        },
+        'selected_period': time_period,
+        'selected_granularity': granularity,
+        'custom_date_from': date_from,
+        'custom_date_to': date_to,
         'breadcrumbs': [
             {'title': 'Home', 'url': '/'},
-            {'title': 'Charts'},
-        ]
+            {'title': 'Charts', 'url': None},
+        ],
+        'page_title': 'Charts & Visualizations',
+        'period_options': [
+            {'value': '7d', 'label': '7 days', 'active': time_period == '7d'},
+            {'value': '30d', 'label': '30 days', 'active': time_period == '30d'},
+            {'value': '90d', 'label': '90 days', 'active': time_period == '90d'},
+            {'value': '180d', 'label': '180 days', 'active': time_period == '180d'},
+            {'value': '365d', 'label': '1 year', 'active': time_period == '365d'},
+            {'value': 'all', 'label': 'All Time', 'active': time_period == 'all'},
+        ],
+        'granularity_options': [
+            {'value': 'auto', 'label': 'Auto', 'active': granularity == 'auto'},
+            {'value': 'daily', 'label': 'Daily', 'active': granularity == 'daily'},
+            {'value': 'monthly', 'label': 'Monthly', 'active': granularity == 'monthly'},
+            {'value': 'yearly', 'label': 'Yearly', 'active': granularity == 'yearly'},
+        ],
     }
-    return render(request, 'core/coming_soon.html', {
-        'page_title': 'Charts & Analytics',
-        'description': 'Visualize your listening patterns with interactive charts and analytics.',
-        **context
+
+    # Log performance
+    load_time = (timezone.now() - start_time).total_seconds()
+    logger.info("Charts page loaded", extra={
+        'load_time_seconds': load_time,
+        'period': time_period,
+        'granularity': granularity,
+        'total_scrobbles': total_scrobbles,
+        'data_points': len(chart_labels),
+        'custom_range': bool(date_from and date_to)
     })
+
+    # Handle partial template requests for htmx updates
+    partial = request.GET.get('partial')
+    if partial:
+        if partial == 'chart':
+            return render(request, 'core/partials/charts_container.html', context)
+        elif partial == 'filters':
+            return render(request, 'core/partials/charts_filters.html', context)
+
+    return render(request, 'core/charts.html', context)
 
 
 @api_view(['GET'])

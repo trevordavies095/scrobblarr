@@ -1,0 +1,41 @@
+{% if chart_data_dict.success %}
+    {% if chart_stats.total_scrobbles > 0 %}
+        <!-- Chart Display -->
+        <div class="chart-container">
+            <div class="chart-title">
+                {{ chart_stats.period_display }} - {{ chart_stats.granularity }} View
+            </div>
+            <div class="chart-wrapper">
+                <canvas id="scrobbleChart"></canvas>
+            </div>
+        </div>
+    {% else %}
+        <!-- Empty State -->
+        <div class="chart-empty-state">
+            <div class="chart-empty-state-icon">📊</div>
+            <h3>No Scrobbles Found</h3>
+            <p>No listening activity found for the selected time period. Try selecting a different time range or check your scrobble data.</p>
+        </div>
+    {% endif %}
+{% else %}
+    <!-- Error State -->
+    <div class="chart-error">
+        <div class="chart-error-icon">⚠️</div>
+        <h3>Unable to Load Chart</h3>
+        <p>{{ chart_data_dict.error|default:"There was a problem loading your chart data. Please try again later." }}</p>
+        <div style="margin-top: 1rem;">
+            <button onclick="window.location.reload()" class="btn btn-secondary btn-sm">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="23,4 23,10 17,10"/>
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                </svg>
+                Retry
+            </button>
+        </div>
+    </div>
+{% endif %}
+
+<!-- Embedded script data for Chart.js (updated with each htmx request) -->
+<script type="application/json" id="chart-data">
+{{ chart_data|safe }}
+</script>

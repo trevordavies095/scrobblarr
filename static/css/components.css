@@ -203,11 +203,15 @@
 
 /* Legacy support for old class names */
 .stat-change-positive {
-    @extend .stat-change-up;
+    background-color: rgba(76, 175, 80, 0.15);
+    border: 1px solid rgba(76, 175, 80, 0.3);
+    color: #4caf50;
 }
 
 .stat-change-negative {
-    @extend .stat-change-down;
+    background-color: rgba(244, 67, 54, 0.15);
+    border: 1px solid rgba(244, 67, 54, 0.3);
+    color: #f44336;
 }
 
 /* Responsive stat cards */

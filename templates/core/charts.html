@@ -1,0 +1,441 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }} - Scrobblarr{% endblock %}
+
+{% block extra_head %}
+<!-- Chart.js is already loaded in base.html -->
+{% endblock %}
+
+{% block content %}
+<div class="charts-page">
+    <div class="charts-header">
+        <h1 class="charts-title">Scrobbles Over Time</h1>
+        <p class="charts-description">
+            Visualize your listening patterns with interactive charts showing your scrobble history over different time periods.
+        </p>
+    </div>
+
+    <!-- Time Period & Granularity Filters -->
+    <div class="charts-filters">
+        <form method="get" class="filters-form" hx-get="{% url 'core:charts' %}?partial=chart" hx-target="#chart-container" hx-trigger="change">
+            <div class="filter-row">
+                <!-- Time Period Selector -->
+                <div class="filter-section">
+                    <label class="filter-label">Time Period:</label>
+                    <div class="time-period-selector">
+                        {% for option in period_options %}
+                        <a href="{% url 'core:charts' %}?period={{ option.value }}&granularity={{ selected_granularity }}{% if custom_date_from %}&date_from={{ custom_date_from }}{% endif %}{% if custom_date_to %}&date_to={{ custom_date_to }}{% endif %}"
+                           class="time-period-option{% if option.active %} active{% endif %}"
+                           hx-get="{% url 'core:charts' %}?partial=chart&period={{ option.value }}&granularity={{ selected_granularity }}{% if custom_date_from %}&date_from={{ custom_date_from }}{% endif %}{% if custom_date_to %}&date_to={{ custom_date_to }}{% endif %}"
+                           hx-target="#chart-container">
+                            {{ option.label }}
+                        </a>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Custom Date Range -->
+                <div class="filter-section">
+                    <label class="filter-label">Custom Range:</label>
+                    <div class="date-range-inputs">
+                        <input type="date"
+                               name="date_from"
+                               value="{{ custom_date_from }}"
+                               class="form-input date-input"
+                               placeholder="From date"
+                               hx-get="{% url 'core:charts' %}?partial=chart"
+                               hx-target="#chart-container"
+                               hx-trigger="change"
+                               hx-include=".filters-form">
+                        <span class="date-separator">to</span>
+                        <input type="date"
+                               name="date_to"
+                               value="{{ custom_date_to }}"
+                               class="form-input date-input"
+                               placeholder="To date"
+                               hx-get="{% url 'core:charts' %}?partial=chart"
+                               hx-target="#chart-container"
+                               hx-trigger="change"
+                               hx-include=".filters-form">
+                    </div>
+                </div>
+
+                <!-- Granularity Override -->
+                <div class="filter-section">
+                    <label class="filter-label">Granularity:</label>
+                    <div class="granularity-selector">
+                        {% for option in granularity_options %}
+                        <a href="{% url 'core:charts' %}?period={{ selected_period }}&granularity={{ option.value }}{% if custom_date_from %}&date_from={{ custom_date_from }}{% endif %}{% if custom_date_to %}&date_to={{ custom_date_to }}{% endif %}"
+                           class="time-period-option{% if option.active %} active{% endif %}"
+                           hx-get="{% url 'core:charts' %}?partial=chart&period={{ selected_period }}&granularity={{ option.value }}{% if custom_date_from %}&date_from={{ custom_date_from }}{% endif %}{% if custom_date_to %}&date_to={{ custom_date_to }}{% endif %}"
+                           hx-target="#chart-container">
+                            {{ option.label }}
+                        </a>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filter Summary and Actions -->
+            <div class="filter-summary">
+                <div class="summary-text">
+                    <span class="summary-label">Showing:</span>
+                    <span class="summary-value">{{ chart_stats.period_display }}</span>
+                    <span class="summary-separator">•</span>
+                    <span class="summary-value">{{ chart_stats.granularity }} granularity</span>
+                    <span class="summary-separator">•</span>
+                    <span class="summary-value">{{ chart_stats.total_scrobbles|floatformat:0 }} scrobbles</span>
+                </div>
+                {% if chart_data_dict.success and chart_stats.total_scrobbles > 0 %}
+                <div class="filter-actions">
+                    <button type="button" id="download-chart" class="btn btn-ghost btn-sm">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7,10 12,15 17,10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        Download PNG
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+
+    <!-- Chart Container -->
+    <div id="chart-container">
+        {% include "core/partials/charts_container.html" %}
+    </div>
+
+    <!-- Chart Statistics -->
+    {% if chart_data_dict.success and chart_stats.total_scrobbles > 0 %}
+    <div class="chart-statistics">
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-card-header">
+                    <div class="stat-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value">{{ chart_stats.total_scrobbles|floatformat:0 }}</div>
+                        <div class="stat-label">Total Scrobbles</div>
+                        <div class="stat-subtitle">{{ chart_stats.period_display }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-card-header">
+                    <div class="stat-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 20V10"/>
+                            <path d="M12 20V4"/>
+                            <path d="M6 20v-6"/>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value">{{ chart_stats.max_scrobbles|floatformat:0 }}</div>
+                        <div class="stat-label">Peak {{ chart_stats.granularity }}</div>
+                        <div class="stat-subtitle">Highest single period</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-card-header">
+                    <div class="stat-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value">{{ chart_stats.avg_scrobbles|floatformat:1 }}</div>
+                        <div class="stat-label">Average per {{ chart_stats.granularity }}</div>
+                        <div class="stat-subtitle">Across {{ chart_stats.data_points }} periods</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-card-header">
+                    <div class="stat-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                            <rect x="9" y="9" width="6" height="6"/>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value">{{ chart_stats.data_points|floatformat:0 }}</div>
+                        <div class="stat-label">Data Points</div>
+                        <div class="stat-subtitle">{{ chart_stats.granularity }} periods</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Chart Data for JavaScript -->
+<script type="application/json" id="chart-data-global">
+{{ chart_data|safe }}
+</script>
+
+<!-- Charts JavaScript -->
+{% load static %}
+<script src="{% static 'js/charts.js' %}"></script>
+
+<style>
+/* Charts Page Specific Styles */
+.charts-page {
+    animation: fadeIn 0.4s ease-out;
+}
+
+.charts-header {
+    margin-bottom: 2rem;
+    text-align: center;
+}
+
+.charts-title {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: #e0e0e0;
+    margin: 0 0 1rem 0;
+    background: linear-gradient(135deg, #bb86fc, #6200ee);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.charts-description {
+    font-size: 1.125rem;
+    color: #999;
+    margin: 0 auto;
+    max-width: 600px;
+    line-height: 1.6;
+}
+
+.charts-filters {
+    background: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.filter-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 2rem;
+    margin-bottom: 1.5rem;
+    align-items: start;
+}
+
+.filter-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.filter-label {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #bb86fc;
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.date-range-inputs {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.date-input {
+    flex: 1;
+    min-width: 0;
+}
+
+.date-separator {
+    color: #999;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.granularity-selector {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.filter-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 1rem;
+    border-top: 1px solid #333;
+}
+
+.summary-text {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+}
+
+.summary-label {
+    color: #999;
+    font-weight: 500;
+}
+
+.summary-value {
+    color: #e0e0e0;
+    font-weight: 600;
+}
+
+.summary-separator {
+    color: #666;
+}
+
+.filter-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.chart-container {
+    background: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+    min-height: 500px;
+}
+
+.chart-wrapper {
+    position: relative;
+    height: 400px;
+    width: 100%;
+}
+
+.chart-statistics {
+    margin-top: 2rem;
+}
+
+.chart-error {
+    text-align: center;
+    padding: 3rem 2rem;
+    color: #ff6b6b;
+    background: rgba(244, 67, 54, 0.05);
+    border: 1px solid rgba(244, 67, 54, 0.2);
+    border-radius: 8px;
+}
+
+.chart-error-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.7;
+    display: block;
+}
+
+.chart-empty-state {
+    text-align: center;
+    padding: 3rem 2rem;
+    color: #999;
+}
+
+.chart-empty-state-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+    display: block;
+}
+
+.chart-empty-state h3 {
+    color: #e0e0e0;
+    margin: 0 0 1rem 0;
+    font-size: 1.25rem;
+}
+
+.chart-empty-state p {
+    margin: 0;
+    color: #999;
+}
+
+/* Mobile responsive design */
+@media (max-width: 768px) {
+    .charts-title {
+        font-size: 2rem;
+    }
+
+    .filter-row {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+
+    .filter-summary {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: stretch;
+    }
+
+    .summary-text {
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    .date-range-inputs {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .date-separator {
+        display: none;
+    }
+
+    .granularity-selector,
+    .time-period-selector {
+        justify-content: center;
+    }
+
+    .chart-wrapper {
+        height: 300px;
+    }
+
+    .chart-container {
+        padding: 1rem;
+        min-height: 400px;
+    }
+}
+
+@media (max-width: 480px) {
+    .charts-title {
+        font-size: 1.75rem;
+    }
+
+    .charts-filters {
+        padding: 1rem;
+    }
+
+    .filter-section {
+        gap: 0.5rem;
+    }
+
+    .time-period-selector,
+    .granularity-selector {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .time-period-option {
+        text-align: center;
+    }
+
+    .chart-wrapper {
+        height: 250px;
+    }
+}
+</style>
+{% endblock %}

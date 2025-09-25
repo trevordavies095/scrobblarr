@@ -857,8 +857,9 @@ class StatsViewSet(viewsets.ViewSet):
         from django.db.models import Count
         chart_data = base_queryset.extra(
             select={
-                'period': f"strftime('{date_format}', timestamp)"
-            }
+                'period': "strftime(%s, timestamp)"
+            },
+            select_params=[date_format]
         ).values('period').annotate(
             scrobble_count=Count('id')
         ).order_by('period')
