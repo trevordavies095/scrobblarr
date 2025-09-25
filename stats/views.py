@@ -723,7 +723,8 @@ class StatsViewSet(viewsets.ViewSet):
         albums = Album.objects.select_related('artist').annotate(
             scrobble_count=Count(
                 'tracks__scrobbles',
-                filter=filter_conditions
+                filter=filter_conditions,
+                distinct=True
             ),
             track_count=Count('tracks', distinct=True),
             last_scrobbled=Max(

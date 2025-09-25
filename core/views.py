@@ -574,21 +574,190 @@ def top_artists(request):
     return render(request, 'core/top_artists.html', context)
 
 
+def _export_top_albums_csv(albums_data, period_display):
+    """
+    Export top albums to CSV format.
+    """
+    import csv
+    from django.http import HttpResponse
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="top_albums_{period_display.lower().replace(" ", "_")}_{timezone.now().strftime("%Y%m%d_%H%M%S")}.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow(['Rank', 'Album', 'Artist', 'Scrobbles', 'Percentage', 'First Scrobble', 'Last Scrobble'])
+
+    for album in albums_data:
+        writer.writerow([
+            album['rank'],
+            album['name'],
+            album['artist_name'],
+            album['scrobble_count'],
+            f"{album['percentage']}%",
+            album.get('first_scrobble', ''),
+            album.get('last_scrobble', '')
+        ])
+
+    return response
+
+
 def top_albums(request):
     """
-    Top albums page (placeholder for Phase 3).
+    Top albums page with time period selector and dynamic filtering.
     """
+    import requests
+    from datetime import datetime, timedelta
+    from django.core.paginator import Paginator
+
+    logger.info("Loading top albums page", extra={
+        'user_agent': request.META.get('HTTP_USER_AGENT', ''),
+        'remote_addr': request.META.get('REMOTE_ADDR')
+    })
+
+    start_time = timezone.now()
+
+    # Get query parameters with defaults
+    time_period = request.GET.get('period', 'all').strip().lower()
+    limit = request.GET.get('limit', '25').strip()
+    export_format = request.GET.get('export', '').strip()
+
+    # Validate time period parameter
+    valid_periods = ['7d', '30d', '90d', '180d', '365d', 'all']
+    if time_period not in valid_periods:
+        time_period = 'all'
+
+    # Validate limit parameter
+    try:
+        limit = int(limit)
+        if limit not in [10, 25, 50, 100]:
+            limit = 25
+    except (ValueError, TypeError):
+        limit = 25
+
+    try:
+        # Build API request to existing stats endpoint
+        api_url = f"http://127.0.0.1:8000/api/top-albums/"
+        api_params = {
+            'limit': limit,
+        }
+
+        # Add time period if not all-time
+        if time_period != 'all':
+            api_params['period'] = time_period
+
+        # Make API request with timeout
+        api_response = requests.get(api_url, params=api_params, timeout=10)
+
+        if api_response.status_code == 200:
+            api_data = api_response.json()
+
+            # Extract albums and metadata
+            albums_data = api_data.get('results', [])
+            total_scrobbles = api_data.get('total_scrobbles', 0)
+            period_display = api_data.get('period_display', 'All Time')
+
+            # Format albums for template display
+            formatted_albums = []
+            max_scrobbles = max([album.get('scrobble_count', 0) for album in albums_data]) if albums_data else 1
+
+            for rank, album in enumerate(albums_data, 1):
+                scrobble_count = album.get('scrobble_count', 0)
+                percentage = (scrobble_count / total_scrobbles * 100) if total_scrobbles > 0 else 0
+                progress_width = (scrobble_count / max_scrobbles * 100) if max_scrobbles > 0 else 0
+
+                formatted_albums.append({
+                    'rank': rank,
+                    'id': album.get('id'),
+                    'name': album.get('album', 'Unknown Album'),
+                    'artist_name': album.get('artist', 'Unknown Artist'),
+                    'artist_id': album.get('artist_id'),
+                    'mbid': album.get('mbid'),
+                    'scrobble_count': scrobble_count,
+                    'percentage': round(percentage, 2),
+                    'progress_width': round(progress_width, 1),
+                    'first_scrobble': album.get('first_scrobble'),
+                    'last_scrobble': album.get('last_scrobble'),
+                })
+        else:
+            # API error fallback
+            logger.error(f"Stats API error: {api_response.status_code}")
+            formatted_albums = []
+            total_scrobbles = 0
+            period_display = time_period.replace('d', ' days').replace('all', 'All Time').title()
+
+    except requests.RequestException as e:
+        logger.error("Failed to fetch top albums from API", exc_info=True)
+        # Fallback to empty state
+        formatted_albums = []
+        total_scrobbles = 0
+        period_display = time_period.replace('d', ' days').replace('all', 'All Time').title()
+
+    except Exception as e:
+        logger.error("Error loading top albums page", exc_info=True)
+        # Fallback to empty state
+        formatted_albums = []
+        total_scrobbles = 0
+        period_display = 'All Time'
+
+    # Handle CSV export
+    if export_format == 'csv' and formatted_albums:
+        logger.info("Exporting top albums to CSV", extra={
+            'period': time_period,
+            'limit': limit,
+            'album_count': len(formatted_albums)
+        })
+        return _export_top_albums_csv(formatted_albums, period_display)
+
+    # Build context for template
     context = {
+        'albums': formatted_albums,
+        'total_albums': len(formatted_albums),
+        'total_scrobbles': total_scrobbles,
+        'period_display': period_display,
+        'selected_period': time_period,
+        'selected_limit': limit,
         'breadcrumbs': [
             {'title': 'Home', 'url': '/'},
-            {'title': 'Top Albums'},
-        ]
-    }
-    return render(request, 'core/coming_soon.html', {
+            {'title': 'Top Albums', 'url': None},
+        ],
         'page_title': 'Top Albums',
-        'description': 'Explore your favorite albums and their listening statistics.',
-        **context
+        'has_data': len(formatted_albums) > 0,
+        'error': None,
+        'period_options': [
+            {'value': '7d', 'label': '7 days', 'active': time_period == '7d'},
+            {'value': '30d', 'label': '30 days', 'active': time_period == '30d'},
+            {'value': '90d', 'label': '90 days', 'active': time_period == '90d'},
+            {'value': '180d', 'label': '180 days', 'active': time_period == '180d'},
+            {'value': '365d', 'label': '1 year', 'active': time_period == '365d'},
+            {'value': 'all', 'label': 'All Time', 'active': time_period == 'all'},
+        ],
+        'limit_options': [
+            {'value': 10, 'label': '10', 'active': limit == 10},
+            {'value': 25, 'label': '25', 'active': limit == 25},
+            {'value': 50, 'label': '50', 'active': limit == 50},
+            {'value': 100, 'label': '100', 'active': limit == 100},
+        ],
+    }
+
+    # Log performance
+    load_time = (timezone.now() - start_time).total_seconds()
+    logger.info("Top albums page loaded", extra={
+        'load_time_seconds': load_time,
+        'period': time_period,
+        'limit': limit,
+        'album_count': len(formatted_albums),
+        'total_scrobbles': total_scrobbles
     })
+
+    # Handle partial template requests for htmx updates
+    partial = request.GET.get('partial')
+    if partial:
+        if partial == 'list':
+            return render(request, 'core/partials/top_albums_list.html', context)
+        elif partial == 'filters':
+            return render(request, 'core/partials/top_albums_filters.html', context)
+
+    return render(request, 'core/top_albums.html', context)
 
 
 def top_tracks(request):
