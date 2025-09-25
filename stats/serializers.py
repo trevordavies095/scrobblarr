@@ -309,3 +309,63 @@ class ArtistStory14Serializer(serializers.Serializer):
         """Get chart data for this artist using existing chart infrastructure."""
         # This will be populated by the view with chart data
         return self.context.get('chart_data', {})
+
+
+class AlbumStory15Serializer(serializers.Serializer):
+    """
+    Story 15 compliant serializer for album detail API.
+    Returns nested structure with album info, track list, and chart data.
+    """
+    album = serializers.SerializerMethodField()
+    tracks = serializers.SerializerMethodField()
+    chart_data = serializers.SerializerMethodField()
+
+    def __init__(self, *args, **kwargs):
+        # Extract context parameters
+        self.track_ordering = kwargs.pop('track_ordering', 'album_order')  # 'album_order' or 'scrobble_count'
+        super().__init__(*args, **kwargs)
+
+    def get_album(self, obj):
+        """Get basic album information with scrobble stats."""
+        # Get first and last scrobble dates for this album
+        scrobble_qs = Scrobble.objects.filter(track__album=obj)
+
+        first_scrobble = scrobble_qs.order_by('timestamp').first()
+        last_scrobble = scrobble_qs.order_by('-timestamp').first()
+
+        return {
+            'name': obj.name,
+            'artist': obj.artist.name,
+            'mbid': obj.mbid,
+            'total_scrobbles': scrobble_qs.count(),
+            'first_scrobble': first_scrobble.timestamp.isoformat() + 'Z' if first_scrobble else None,
+            'last_scrobble': last_scrobble.timestamp.isoformat() + 'Z' if last_scrobble else None
+        }
+
+    def get_tracks(self, obj):
+        """Get complete track listing with individual scrobble counts."""
+        tracks_qs = Track.objects.filter(album=obj).annotate(
+            scrobble_count=Count('scrobbles')
+        )
+
+        # Order tracks by album order (track position) or by scrobble count
+        if self.track_ordering == 'scrobble_count':
+            tracks_qs = tracks_qs.order_by('-scrobble_count', 'name')
+        else:
+            # Default: order by track position (if available), otherwise by name
+            # Since we don't have explicit track ordering in the model, order by name for consistency
+            tracks_qs = tracks_qs.order_by('name')
+
+        return [
+            {
+                'track': track.name,
+                'scrobble_count': track.scrobble_count,
+                'mbid': track.mbid
+            }
+            for track in tracks_qs
+        ]
+
+    def get_chart_data(self, obj):
+        """Get chart data for this album using existing chart infrastructure."""
+        # This will be populated by the view with chart data
+        return self.context.get('chart_data', {})

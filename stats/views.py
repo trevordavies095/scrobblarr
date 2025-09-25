@@ -13,7 +13,7 @@ from music.models import Artist, Album, Track, Scrobble
 from core.exceptions import APIError, DataValidationError
 from .serializers import (
     ArtistListSerializer, ArtistDetailSerializer, ArtistStory14Serializer,
-    AlbumListSerializer, AlbumDetailSerializer,
+    AlbumListSerializer, AlbumDetailSerializer, AlbumStory15Serializer,
     TrackListSerializer, TrackDetailSerializer,
     ScrobbleListSerializer, RecentTracksSerializer,
     TopAlbumsSerializer, TopTracksSerializer,
@@ -474,6 +474,89 @@ class StatsViewSet(viewsets.ViewSet):
                 'total_scrobbles': 0
             }
 
+    def generate_album_chart_data(self, request, album):
+        """Generate chart data for a specific album using existing chart infrastructure."""
+        try:
+            period_display = self.get_period_display(request)
+            granularity = self.get_granularity(request, None)  # No time filter for now
+
+            # Validate granularity
+            valid_granularities = ['daily', 'monthly', 'yearly']
+            if granularity not in valid_granularities:
+                self.logger.warning(
+                    f"Invalid granularity for album chart: {granularity}",
+                    extra={'granularity': granularity, 'album_id': album.id}
+                )
+                granularity = 'monthly'  # Default fallback
+
+            # Get the appropriate date format for SQLite
+            date_format = self._get_date_trunc_format(granularity)
+
+            # Build the query with album filtering (only scrobbles from this album's tracks)
+            scrobbles_qs = Scrobble.objects.filter(track__album=album)
+
+            # Aggregate by period (using same pattern as existing chart_data method)
+            from django.db.models import Count
+            chart_data = list(scrobbles_qs.extra(
+                select={
+                    'period': f"strftime('{date_format}', timestamp)"
+                }
+            ).values('period').annotate(
+                scrobble_count=Count('id')
+            ).order_by('period'))
+
+            # Limit data points to prevent performance issues (max 366 for daily)
+            if len(chart_data) > 366:
+                chart_data = chart_data[-366:]
+
+            # Format for Chart.js with proper date ranges
+            formatted_data = []
+            for item in chart_data:
+                period_str = item['period']
+
+                # Generate start and end dates based on granularity
+                if granularity == 'daily':
+                    start_date = end_date = period_str
+                elif granularity == 'monthly':
+                    # Convert YYYY-MM to full date range
+                    year, month = period_str.split('-')
+                    start_date = f"{year}-{month}-01"
+                    # Get last day of month
+                    import calendar
+                    last_day = calendar.monthrange(int(year), int(month))[1]
+                    end_date = f"{year}-{month}-{last_day:02d}"
+                else:  # yearly
+                    start_date = f"{period_str}-01-01"
+                    end_date = f"{period_str}-12-31"
+
+                formatted_data.append({
+                    'period': period_str,
+                    'scrobble_count': item['scrobble_count'],
+                    'start_date': start_date,
+                    'end_date': end_date
+                })
+
+            return {
+                'period': period_display,
+                'granularity': granularity,
+                'data': formatted_data,
+                'total_scrobbles': sum(item['scrobble_count'] for item in formatted_data)
+            }
+
+        except Exception as e:
+            self.logger.error(
+                f"Error generating album chart data",
+                extra={'album_id': album.id, 'exception': str(e)},
+                exc_info=True
+            )
+            # Return empty chart data on error
+            return {
+                'period': 'all',
+                'granularity': 'monthly',
+                'data': [],
+                'total_scrobbles': 0
+            }
+
     @action(detail=False)
     def recent_tracks(self, request):
         """
@@ -834,25 +917,64 @@ class StatsViewSet(viewsets.ViewSet):
 
     @action(detail=True)
     def albums(self, request, pk=None):
-        """Get album detail with track listings."""
+        """Get album detail with track listings (Story 15 compliant)."""
         try:
-            album = get_object_or_404(
-                Album.objects.select_related('artist').prefetch_related('tracks'),
-                pk=pk
-            )
+            # Support both ID and MBID lookup
+            if self.is_valid_uuid(pk):
+                # MBID lookup
+                album = get_object_or_404(
+                    Album.objects.select_related('artist').prefetch_related('tracks'),
+                    mbid=pk
+                )
+                lookup_type = 'mbid'
+            else:
+                # ID lookup
+                album = get_object_or_404(
+                    Album.objects.select_related('artist').prefetch_related('tracks'),
+                    pk=pk
+                )
+                lookup_type = 'id'
+
             self.logger.info(
                 f"Album detail requested",
-                extra={'album_id': pk, 'album_name': album.name, 'artist_name': album.artist.name}
+                extra={
+                    'album_lookup': pk,
+                    'lookup_type': lookup_type,
+                    'album_name': album.name,
+                    'artist_name': album.artist.name
+                }
             )
-            serializer = AlbumDetailSerializer(album)
+
+            # Get track ordering parameter (album_order or scrobble_count)
+            track_ordering = request.query_params.get('ordering', 'album_order')
+            if track_ordering not in ['album_order', 'scrobble_count']:
+                track_ordering = 'album_order'
+
+            # Generate chart data for this album
+            chart_data = self.generate_album_chart_data(request, album)
+
+            # Create serializer with Story 15 compliance
+            serializer = AlbumStory15Serializer(
+                album,
+                track_ordering=track_ordering,
+                context={'chart_data': chart_data}
+            )
+
             return Response(serializer.data)
+
         except Http404:
-            self.logger.warning(f"Album not found", extra={'album_id': pk})
-            raise APIError(f"Album with ID {pk} not found", status_code=404)
+            self.logger.warning(
+                f"Album not found",
+                extra={'album_lookup': pk, 'lookup_type': lookup_type if 'lookup_type' in locals() else 'unknown'}
+            )
+            raise APIError(f"Album with {'MBID' if self.is_valid_uuid(pk) else 'ID'} {pk} not found", status_code=404)
+        except APIError:
+            # Re-raise APIError to return proper HTTP status codes
+            raise
         except Exception as e:
             self.logger.error(
                 f"Error retrieving album detail",
-                extra={'album_id': pk, 'exception': str(e)},
+                extra={'album_lookup': pk, 'exception': str(e)},
                 exc_info=True
             )
             raise APIError("Error retrieving album data", status_code=500)
