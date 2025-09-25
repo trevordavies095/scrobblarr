@@ -1,0 +1,89 @@
+{% load dashboard_extras %}
+{% if recent_tracks %}
+<section class="recent-section" id="recent-tracks" hx-get="{% url 'core:index' %}?partial=recent" hx-trigger="every 60s" hx-select="#recent-tracks" hx-swap="outerHTML">
+    <div class="section-header">
+        <h2 class="section-title">Recent Tracks</h2>
+        <div class="section-actions">
+            <span class="section-count">{{ recent_tracks|length }} of {{ stats.total_scrobbles|format_number }} total</span>
+            <a href="{% url 'core:recent' %}" class="btn btn-ghost btn-sm">View All</a>
+        </div>
+    </div>
+
+    <div class="recent-tracks">
+        <div class="table-responsive">
+            <table class="table table-enhanced">
+                <thead>
+                    <tr>
+                        <th>Track</th>
+                        <th>Artist</th>
+                        <th class="hidden-mobile">Album</th>
+                        <th class="hidden-mobile">Duration</th>
+                        <th>Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for track in recent_tracks %}
+                    <tr class="table-row-hover">
+                        <td>
+                            <div class="track-info">
+                                <a href="#" class="table-link track-name">{{ track.track_name }}</a>
+                                {% if track.play_count %}
+                                <span class="track-play-count" title="Total plays">{{ track.play_count }} plays</span>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td>
+                            <a href="#" class="table-link artist-name">{{ track.artist_name }}</a>
+                        </td>
+                        <td class="table-meta hidden-mobile">
+                            {% if track.album_name %}
+                                <a href="#" class="table-link album-name">{{ track.album_name }}</a>
+                            {% else %}
+                                <span class="table-meta-empty">Unknown Album</span>
+                            {% endif %}
+                        </td>
+                        <td class="table-meta hidden-mobile">
+                            {% if track.duration %}
+                                <span class="track-duration">{{ track.duration }}</span>
+                            {% else %}
+                                <span class="table-meta-empty">--</span>
+                            {% endif %}
+                        </td>
+                        <td class="table-meta">
+                            <time datetime="{{ track.timestamp|date:'c' }}" title="{{ track.timestamp|date:'Y-m-d H:i:s' }}" class="relative-time">
+                                {{ track.relative_time }}
+                            </time>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+{% else %}
+<!-- Empty state for recent tracks -->
+<section class="recent-section" id="recent-tracks">
+    <div class="section-header">
+        <h2 class="section-title">Recent Tracks</h2>
+    </div>
+
+    <div class="empty-state">
+        <div class="empty-state-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M9 18V5l12-2v13"/>
+                <circle cx="6" cy="18" r="3"/>
+                <circle cx="18" cy="16" r="3"/>
+            </svg>
+        </div>
+        <h3 class="empty-state-title">No Recent Activity</h3>
+        <p class="empty-state-description">
+            Your recent scrobbles will appear here once you start importing your listening history.
+        </p>
+        <div class="empty-state-actions">
+            <a href="/admin/" class="btn btn-primary">Import Data</a>
+            <a href="{% url 'core:health_check' %}" class="btn btn-ghost">Check Status</a>
+        </div>
+    </div>
+</section>
+{% endif %}

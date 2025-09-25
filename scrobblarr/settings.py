@@ -87,19 +87,8 @@ DATABASES = {
         'NAME': BASE_DIR / 'db.sqlite3',
         # SQLite Performance Optimizations (Story 18)
         'OPTIONS': {
-            'init_command': """
-                PRAGMA journal_mode=WAL;
-                PRAGMA synchronous=NORMAL;
-                PRAGMA cache_size=20000;
-                PRAGMA temp_store=MEMORY;
-                PRAGMA mmap_size=268435456;
-                PRAGMA page_size=32768;
-                PRAGMA foreign_keys=ON;
-                PRAGMA query_only=OFF;
-                PRAGMA read_uncommitted=ON;
-                PRAGMA recursive_triggers=ON;
-                PRAGMA threads=4;
-            """,
+            # SQLite-specific options
+            'timeout': 30,  # Timeout in seconds for database locks
         },
         'CONN_MAX_AGE': 300,  # Keep connections alive for 5 minutes
     }

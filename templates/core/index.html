@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load dashboard_extras %}
 
 {% block title %}Home - Scrobblarr{% endblock %}
 
@@ -7,78 +8,157 @@
     <div class="hero-content">
         <h1 class="hero-title">Welcome to Scrobblarr</h1>
         <p class="hero-subtitle">Your music listening history, consolidated and analyzed</p>
-    </div>
-</div>
 
-<div class="stats-grid">
-    <div class="stat-card">
-        <div class="stat-value">{{ stats.total_scrobbles|default:"--" }}</div>
-        <div class="stat-label">Total Scrobbles</div>
-        {% if stats.scrobble_change %}
-        <div class="stat-change stat-change-{{ stats.scrobble_change.direction }}">
-            {{ stats.scrobble_change.text }}
+        {% if stats.last_scrobble_date %}
+        <div class="hero-stats">
+            <div class="hero-stat">
+                <span class="hero-stat-value">{{ stats.current_streak|default:0 }}</span>
+                <span class="hero-stat-label">day{% if stats.current_streak != 1 %}s{% endif %} streak</span>
+            </div>
+            {% if stats.estimated_listening_days %}
+            <div class="hero-stat">
+                <span class="hero-stat-value">{{ stats.estimated_listening_days|floatformat:0 }}</span>
+                <span class="hero-stat-label">days of music</span>
+            </div>
+            {% endif %}
         </div>
         {% endif %}
     </div>
-
-    <div class="stat-card">
-        <div class="stat-value">{{ stats.unique_artists|default:"--" }}</div>
-        <div class="stat-label">Unique Artists</div>
-    </div>
-
-    <div class="stat-card">
-        <div class="stat-value">{{ stats.unique_albums|default:"--" }}</div>
-        <div class="stat-label">Unique Albums</div>
-    </div>
-
-    <div class="stat-card">
-        <div class="stat-value">{{ stats.unique_tracks|default:"--" }}</div>
-        <div class="stat-label">Unique Tracks</div>
-    </div>
 </div>
 
+<!-- Main Statistics Grid -->
+<div class="stats-grid" id="dashboard-stats" hx-get="{% url 'core:index' %}?partial=stats" hx-trigger="every 30s" hx-select="#dashboard-stats" hx-swap="outerHTML">
+    {% stat_card "Total Scrobbles" stats.total_scrobbles subtitle="All time" change=stats.scrobble_change %}
+
+    {% stat_card "Unique Artists" stats.unique_artists subtitle=stats.top_artist.name|default:"No data" %}
+
+    {% stat_card "Unique Albums" stats.unique_albums subtitle=stats.top_album.name|default:"No data" %}
+
+    {% stat_card "Unique Tracks" stats.unique_tracks subtitle=stats.top_track.name|default:"No data" %}
+</div>
+
+<!-- Enhanced Statistics Row -->
+{% if stats.scrobbles_last_7_days > 0 or stats.estimated_listening_hours > 0 %}
+<div class="secondary-stats-grid">
+    {% if stats.scrobbles_last_7_days > 0 %}
+    <div class="stat-card stat-card-secondary">
+        <div class="stat-value">{{ stats.daily_average_7_days|floatformat:1 }}</div>
+        <div class="stat-label">Daily Average</div>
+        <div class="stat-subtitle">Last 7 days</div>
+    </div>
+    {% endif %}
+
+    {% if stats.estimated_listening_hours > 0 %}
+    <div class="stat-card stat-card-secondary">
+        <div class="stat-value">{{ stats.estimated_listening_hours|floatformat:0 }}h</div>
+        <div class="stat-label">Total Listening Time</div>
+        <div class="stat-subtitle">Estimated</div>
+    </div>
+    {% endif %}
+
+    {% if stats.longest_streak > 0 %}
+    <div class="stat-card stat-card-secondary">
+        <div class="stat-value">{{ stats.longest_streak }}</div>
+        <div class="stat-label">Longest Streak</div>
+        <div class="stat-subtitle">Days in a row</div>
+    </div>
+    {% endif %}
+
+    {% if stats.average_track_duration %}
+    <div class="stat-card stat-card-secondary">
+        <div class="stat-value">{{ stats.average_track_duration|floatformat:1 }}m</div>
+        <div class="stat-label">Average Track</div>
+        <div class="stat-subtitle">Duration</div>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
 {% if recent_tracks %}
-<section class="recent-section">
+<section class="recent-section" id="recent-tracks" hx-get="{% url 'core:index' %}?partial=recent" hx-trigger="every 60s" hx-select="#recent-tracks" hx-swap="outerHTML">
     <div class="section-header">
         <h2 class="section-title">Recent Tracks</h2>
-        <a href="{% url 'core:recent' %}" class="btn btn-ghost btn-sm">View All</a>
+        <div class="section-actions">
+            <span class="section-count">{{ recent_tracks|length }} of {{ stats.total_scrobbles|format_number }} total</span>
+            <a href="{% url 'core:recent' %}" class="btn btn-ghost btn-sm">View All</a>
+        </div>
     </div>
 
     <div class="recent-tracks">
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>Track</th>
-                    <th>Artist</th>
-                    <th>Album</th>
-                    <th>Time</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for track in recent_tracks %}
-                <tr>
-                    <td>
-                        <a href="#" class="table-link">{{ track.track_name }}</a>
-                    </td>
-                    <td>
-                        <a href="#" class="table-link">{{ track.artist_name }}</a>
-                    </td>
-                    <td class="table-meta">
-                        {% if track.album_name %}
-                            <a href="#" class="table-link">{{ track.album_name }}</a>
-                        {% else %}
-                            <span class="table-meta">Unknown Album</span>
-                        {% endif %}
-                    </td>
-                    <td class="table-meta">
-                        <time datetime="{{ track.timestamp|date:'c' }}" title="{{ track.timestamp|date:'Y-m-d H:i:s' }}">
-                            {{ track.relative_time }}
-                        </time>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div class="table-responsive">
+            <table class="table table-enhanced">
+                <thead>
+                    <tr>
+                        <th>Track</th>
+                        <th>Artist</th>
+                        <th class="hidden-mobile">Album</th>
+                        <th class="hidden-mobile">Duration</th>
+                        <th>Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for track in recent_tracks %}
+                    <tr class="table-row-hover">
+                        <td>
+                            <div class="track-info">
+                                <a href="#" class="table-link track-name">{{ track.track_name }}</a>
+                                {% if track.play_count %}
+                                <span class="track-play-count" title="Total plays">{{ track.play_count }} plays</span>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td>
+                            <a href="#" class="table-link artist-name">{{ track.artist_name }}</a>
+                        </td>
+                        <td class="table-meta hidden-mobile">
+                            {% if track.album_name %}
+                                <a href="#" class="table-link album-name">{{ track.album_name }}</a>
+                            {% else %}
+                                <span class="table-meta-empty">Unknown Album</span>
+                            {% endif %}
+                        </td>
+                        <td class="table-meta hidden-mobile">
+                            {% if track.duration %}
+                                <span class="track-duration">{{ track.duration }}</span>
+                            {% else %}
+                                <span class="table-meta-empty">--</span>
+                            {% endif %}
+                        </td>
+                        <td class="table-meta">
+                            <time datetime="{{ track.timestamp|date:'c' }}" title="{{ track.timestamp|date:'Y-m-d H:i:s' }}" class="relative-time">
+                                {{ track.relative_time }}
+                            </time>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+{% else %}
+<!-- Empty state for recent tracks -->
+<section class="recent-section">
+    <div class="section-header">
+        <h2 class="section-title">Recent Tracks</h2>
+    </div>
+
+    <div class="empty-state">
+        <div class="empty-state-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M9 18V5l12-2v13"/>
+                <circle cx="6" cy="18" r="3"/>
+                <circle cx="18" cy="16" r="3"/>
+            </svg>
+        </div>
+        <h3 class="empty-state-title">No Recent Activity</h3>
+        <p class="empty-state-description">
+            Your recent scrobbles will appear here once you start importing your listening history.
+        </p>
+        <div class="empty-state-actions">
+            <a href="/admin/" class="btn btn-primary">Import Data</a>
+            <a href="{% url 'core:health_check' %}" class="btn btn-ghost">Check Status</a>
+        </div>
     </div>
 </section>
 {% endif %}
@@ -146,17 +226,92 @@
     </div>
 </section>
 
-{% if last_sync %}
-<div class="sync-info">
-    <div class="sync-status">
-        <span class="sync-label">Last updated:</span>
-        <time datetime="{{ last_sync|date:'c' }}">{{ last_sync|date:'Y-m-d H:i:s' }}</time>
+<!-- Sync Status and System Information -->
+{% if sync_status %}
+<div class="sync-info" id="sync-status" hx-get="{% url 'core:index' %}?partial=sync" hx-trigger="every 10s" hx-select="#sync-status" hx-swap="outerHTML">
+    <div class="sync-status sync-status-{{ sync_status.status }}">
+        <div class="sync-indicator">
+            {% if sync_status.status == 'syncing' %}
+                <div class="sync-spinner"></div>
+            {% elif sync_status.status == 'success' %}
+                <span class="sync-icon">✓</span>
+            {% elif sync_status.status == 'error' %}
+                <span class="sync-icon">⚠</span>
+            {% else %}
+                <span class="sync-icon">●</span>
+            {% endif %}
+        </div>
+
+        <div class="sync-content">
+            {% if sync_status.status == 'syncing' %}
+                <span class="sync-label">Syncing with Last.fm...</span>
+            {% elif sync_status.status == 'success' and sync_status.last_sync %}
+                <span class="sync-label">Last updated:</span>
+                <time datetime="{{ sync_status.last_sync|date:'c' }}" class="sync-time">
+                    {{ sync_status.last_sync|date:'M j, Y \a\t H:i' }}
+                </time>
+            {% elif sync_status.status == 'error' %}
+                <span class="sync-label">Sync error:</span>
+                <span class="sync-error">{{ sync_status.error_message|truncatechars:50 }}</span>
+            {% else %}
+                <span class="sync-label">Ready for sync</span>
+            {% endif %}
+
+            {% if sync_status.sync_count > 0 %}
+                <span class="sync-count">{{ sync_status.sync_count }} successful syncs</span>
+            {% endif %}
+        </div>
+
+        {% if sync_status.status == 'error' %}
+        <div class="sync-actions">
+            <button class="btn btn-sm btn-ghost" onclick="location.reload()">Retry</button>
+            <a href="{% url 'core:health_check' %}" class="btn btn-sm btn-ghost">Check Status</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Enhanced Dashboard Footer -->
+{% if dashboard_data %}
+<div class="dashboard-footer">
+    <div class="dashboard-insights">
+        <h3 class="insights-title">Quick Insights</h3>
+        <div class="insights-grid">
+            {% if stats.top_artist.name %}
+            <div class="insight-item">
+                <span class="insight-label">Most played artist:</span>
+                <span class="insight-value">{{ stats.top_artist.name }} ({{ stats.top_artist.play_count|format_number }} plays)</span>
+            </div>
+            {% endif %}
+
+            {% if stats.scrobbles_last_7_days > 0 %}
+            <div class="insight-item">
+                <span class="insight-label">This week's activity:</span>
+                <span class="insight-value">{{ stats.scrobbles_last_7_days|format_number }} scrobbles</span>
+            </div>
+            {% endif %}
+
+            {% if stats.current_streak > 1 %}
+            <div class="insight-item">
+                <span class="insight-label">Current listening streak:</span>
+                <span class="insight-value">{{ stats.current_streak }} consecutive days</span>
+            </div>
+            {% endif %}
+
+            {% if stats.estimated_listening_hours > 24 %}
+            <div class="insight-item">
+                <span class="insight-label">Estimated listening time:</span>
+                <span class="insight-value">{{ stats.estimated_listening_days|floatformat:0 }} days worth of music</span>
+            </div>
+            {% endif %}
+        </div>
     </div>
 </div>
 {% endif %}
 
 <style>
-/* Home page specific styles */
+/* Enhanced Home page styles for Story 20 */
 .home-hero {
     text-align: center;
     padding: 3rem 0;
@@ -164,6 +319,8 @@
     background: linear-gradient(135deg, rgba(187, 134, 252, 0.1), rgba(98, 0, 238, 0.1));
     border-radius: 16px;
     border: 1px solid rgba(187, 134, 252, 0.2);
+    position: relative;
+    overflow: hidden;
 }
 
 .hero-title {
@@ -179,10 +336,68 @@
 .hero-subtitle {
     font-size: 1.25rem;
     color: #999;
-    margin: 0;
+    margin: 0 0 1.5rem 0;
     font-weight: 400;
 }
 
+.hero-stats {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    margin-top: 1.5rem;
+}
+
+.hero-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.hero-stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #bb86fc;
+    line-height: 1;
+}
+
+.hero-stat-label {
+    font-size: 0.9rem;
+    color: #666;
+    margin-top: 0.25rem;
+}
+
+/* Secondary stats grid */
+.secondary-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.stat-card-secondary {
+    background-color: rgba(30, 30, 30, 0.6);
+    border: 1px solid rgba(51, 51, 51, 0.8);
+    padding: 1rem;
+}
+
+.stat-card-secondary .stat-value {
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.stat-card-secondary .stat-label {
+    font-size: 0.85rem;
+    margin-bottom: 0.25rem;
+}
+
+.stat-subtitle {
+    font-size: 0.75rem;
+    color: #777;
+    margin-top: 0.25rem;
+    font-style: italic;
+}
+
+/* Enhanced sections */
 .recent-section {
     margin-bottom: 3rem;
 }
@@ -194,11 +409,300 @@
     margin-bottom: 1.5rem;
 }
 
+.section-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.section-count {
+    font-size: 0.85rem;
+    color: #777;
+}
+
 .section-title {
     font-size: 1.75rem;
     font-weight: 600;
     color: #e0e0e0;
     margin: 0;
+}
+
+/* Enhanced table styling */
+.table-enhanced {
+    margin-bottom: 0;
+}
+
+.table-row-hover:hover {
+    background-color: rgba(187, 134, 252, 0.05);
+    transition: background-color 0.2s ease;
+}
+
+.track-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.track-play-count {
+    font-size: 0.75rem;
+    color: #777;
+    font-style: italic;
+}
+
+.table-meta-empty {
+    color: #555;
+    font-style: italic;
+}
+
+.track-duration {
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Cascadia Code', 'Source Code Pro', monospace;
+    font-size: 0.85rem;
+    color: #999;
+}
+
+.relative-time {
+    font-size: 0.85rem;
+    color: #999;
+}
+
+/* Empty state styling */
+.empty-state {
+    text-align: center;
+    padding: 3rem 2rem;
+    background-color: #1a1a1a;
+    border-radius: 12px;
+    border: 1px solid #333;
+}
+
+.empty-state-icon {
+    color: #666;
+    margin-bottom: 1rem;
+}
+
+.empty-state-title {
+    color: #e0e0e0;
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+}
+
+.empty-state-description {
+    color: #999;
+    font-size: 1rem;
+    line-height: 1.5;
+    margin-bottom: 2rem;
+    max-width: 400px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.empty-state-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+/* Enhanced sync status */
+.sync-info {
+    background-color: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin: 2rem 0;
+}
+
+.sync-status {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.sync-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+}
+
+.sync-status-idle .sync-icon { color: #666; }
+.sync-status-success .sync-icon { color: #4caf50; }
+.sync-status-error .sync-icon { color: #f44336; }
+.sync-status-syncing .sync-spinner {
+    width: 24px;
+    height: 24px;
+    border: 2px solid rgba(187, 134, 252, 0.3);
+    border-top: 2px solid #bb86fc;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.sync-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.sync-label {
+    font-weight: 500;
+    color: #e0e0e0;
+    font-size: 0.9rem;
+}
+
+.sync-time {
+    color: #bb86fc;
+    font-size: 0.85rem;
+}
+
+.sync-error {
+    color: #f44336;
+    font-size: 0.85rem;
+}
+
+.sync-count {
+    color: #777;
+    font-size: 0.75rem;
+}
+
+.sync-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+/* Dashboard footer with insights */
+.dashboard-footer {
+    background-color: rgba(30, 30, 30, 0.5);
+    border: 1px solid rgba(51, 51, 51, 0.5);
+    border-radius: 12px;
+    padding: 2rem;
+    margin-top: 3rem;
+}
+
+.insights-title {
+    color: #e0e0e0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+}
+
+.insights-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+}
+
+.insight-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 1rem;
+    background-color: rgba(26, 26, 26, 0.8);
+    border-radius: 8px;
+    border: 1px solid rgba(51, 51, 51, 0.6);
+}
+
+.insight-label {
+    font-size: 0.85rem;
+    color: #999;
+    font-weight: 500;
+}
+
+.insight-value {
+    font-size: 0.9rem;
+    color: #e0e0e0;
+    font-weight: 600;
+}
+
+/* Progress bar component styles */
+.progress-container {
+    margin: 0.5rem 0;
+}
+
+.progress-label {
+    font-size: 0.85rem;
+    color: #e0e0e0;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background-color: #333;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #bb86fc, #6200ee);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+    min-width: 2px;
+}
+
+.progress-text {
+    font-size: 0.75rem;
+    color: #bb86fc;
+    margin-top: 0.25rem;
+    text-align: right;
+    font-weight: 600;
+}
+
+/* Responsive enhancements for mobile */
+@media (max-width: 768px) {
+    .hero-stats {
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .hero-stat {
+        flex-direction: row;
+        gap: 0.5rem;
+    }
+
+    .hero-stat-value {
+        font-size: 1.5rem;
+    }
+
+    .secondary-stats-grid {
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 0.75rem;
+    }
+
+    .section-header {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: stretch;
+    }
+
+    .section-actions {
+        justify-content: space-between;
+    }
+
+    .insights-grid {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+
+    .sync-status {
+        flex-direction: column;
+        align-items: stretch;
+        text-align: center;
+        gap: 1rem;
+    }
+
+    .sync-actions {
+        justify-content: center;
+    }
+
+    .hidden-mobile {
+        display: none !important;
+    }
 }
 
 .quick-nav-grid {

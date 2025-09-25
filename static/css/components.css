@@ -89,18 +89,51 @@
     margin-bottom: 2rem;
 }
 
+/* Enhanced Stat Cards for Story 20 */
 .stat-card {
     background-color: #1e1e1e;
     border: 1px solid #333;
     border-radius: 12px;
     padding: 1.5rem;
     transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
 }
 
-.stat-card:hover {
+.stat-card:hover,
+.stat-card-clickable:hover {
     border-color: #bb86fc;
     box-shadow: 0 4px 20px rgba(187, 134, 252, 0.1);
     transform: translateY(-2px);
+}
+
+.stat-card-clickable {
+    cursor: pointer;
+}
+
+.stat-card-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.stat-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, rgba(187, 134, 252, 0.2), rgba(98, 0, 238, 0.2));
+    border: 1px solid rgba(187, 134, 252, 0.3);
+    border-radius: 12px;
+    color: #bb86fc;
+    flex-shrink: 0;
+}
+
+.stat-content {
+    flex: 1;
+    min-width: 0; /* Prevent flex item from overflowing */
 }
 
 .stat-value {
@@ -108,8 +141,9 @@
     font-weight: 700;
     color: #bb86fc;
     margin-bottom: 0.5rem;
-    font-family: monospace;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
     letter-spacing: -1px;
+    line-height: 1;
 }
 
 .stat-label {
@@ -118,29 +152,101 @@
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    margin-bottom: 0.25rem;
+}
+
+.stat-subtitle {
+    font-size: 0.85rem;
+    color: #666;
+    font-weight: 400;
+    font-style: italic;
+    margin-top: 0.25rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .stat-change {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     font-size: 0.875rem;
-    margin-top: 0.5rem;
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
+    margin-top: 1rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
     font-weight: 500;
+    backdrop-filter: blur(10px);
 }
 
-.stat-change-positive {
-    background-color: rgba(76, 175, 80, 0.1);
-    color: #66bb6a;
+.stat-change-icon {
+    font-size: 1rem;
+    font-weight: 700;
 }
 
-.stat-change-negative {
-    background-color: rgba(244, 67, 54, 0.1);
-    color: #ff6b6b;
+.stat-change-up {
+    background-color: rgba(76, 175, 80, 0.15);
+    border: 1px solid rgba(76, 175, 80, 0.3);
+    color: #4caf50;
+}
+
+.stat-change-down {
+    background-color: rgba(244, 67, 54, 0.15);
+    border: 1px solid rgba(244, 67, 54, 0.3);
+    color: #f44336;
 }
 
 .stat-change-neutral {
-    background-color: rgba(158, 158, 158, 0.1);
+    background-color: rgba(158, 158, 158, 0.15);
+    border: 1px solid rgba(158, 158, 158, 0.3);
     color: #999;
+}
+
+/* Legacy support for old class names */
+.stat-change-positive {
+    @extend .stat-change-up;
+}
+
+.stat-change-negative {
+    @extend .stat-change-down;
+}
+
+/* Responsive stat cards */
+@media (max-width: 768px) {
+    .stat-card {
+        padding: 1.25rem;
+    }
+
+    .stat-card-header {
+        gap: 0.75rem;
+    }
+
+    .stat-icon {
+        width: 40px;
+        height: 40px;
+    }
+
+    .stat-value {
+        font-size: 2rem;
+    }
+
+    .stat-label {
+        font-size: 0.9rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .stats-grid {
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 1rem;
+    }
+
+    .stat-card {
+        padding: 1rem;
+    }
+
+    .stat-value {
+        font-size: 1.75rem;
+    }
 }
 
 /* Tables */

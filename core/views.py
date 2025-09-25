@@ -46,49 +46,142 @@ def _format_relative_time(timestamp):
 
 def index(request):
     """
-    Home page view for Scrobblarr.
+    Enhanced home page view for Scrobblarr with comprehensive dashboard data.
     """
-    # Get basic statistics for the dashboard
-    try:
-        stats = {
-            'total_scrobbles': Scrobble.objects.count(),
-            'unique_artists': Artist.objects.count(),
-            'unique_albums': Album.objects.count(),
-            'unique_tracks': Track.objects.count(),
-        }
+    from core.utils.stats import DashboardStats
 
-        # Get recent tracks (last 10)
-        recent_tracks = Scrobble.objects.select_related(
+    logger.info("Loading dashboard for user", extra={
+        'user_agent': request.META.get('HTTP_USER_AGENT', ''),
+        'remote_addr': request.META.get('REMOTE_ADDR')
+    })
+
+    start_time = timezone.now()
+
+    try:
+        # Initialize stats calculator
+        stats_calculator = DashboardStats()
+
+        # Get comprehensive dashboard data
+        dashboard_data = stats_calculator.get_comprehensive_dashboard_data()
+
+        # Get recent tracks (last 10) with optimized query
+        recent_tracks_query = Scrobble.objects.select_related(
             'track', 'track__artist', 'track__album'
         ).order_by('-timestamp')[:10]
 
-        # Format recent tracks for display
+        # Format recent tracks for display with enhanced data
         recent_tracks_formatted = []
-        for scrobble in recent_tracks:
-            recent_tracks_formatted.append({
+        for scrobble in recent_tracks_query:
+            track_data = {
                 'track_name': scrobble.track.name,
                 'artist_name': scrobble.track.artist.name,
                 'album_name': scrobble.track.album.name if scrobble.track.album else None,
                 'timestamp': scrobble.timestamp,
                 'relative_time': _format_relative_time(scrobble.timestamp),
-            })
+                'duration': scrobble.track.get_duration_formatted() if scrobble.track.duration else None,
+                'play_count': scrobble.track.get_scrobble_count() if hasattr(scrobble.track, 'play_count') else None
+            }
+            recent_tracks_formatted.append(track_data)
 
-        # Get last sync time (placeholder for now)
-        last_sync = timezone.now() - timedelta(hours=1)  # Mock data
+        # Calculate enhanced statistics
+        basic_counts = dashboard_data['basic_counts']
+        listening_streak = dashboard_data['listening_streak']
+        listening_time = dashboard_data['listening_time']
+        top_items = dashboard_data['top_items']
+        recent_activity = dashboard_data['recent_activity']
+        sync_status = dashboard_data['sync_status']
 
-        context = {
-            'stats': stats,
-            'recent_tracks': recent_tracks_formatted,
-            'last_sync': last_sync,
+        # Create enhanced stats with additional context
+        enhanced_stats = {
+            # Basic counts
+            'total_scrobbles': basic_counts['total_scrobbles'],
+            'unique_artists': basic_counts['unique_artists'],
+            'unique_albums': basic_counts['unique_albums'],
+            'unique_tracks': basic_counts['unique_tracks'],
+
+            # Listening patterns
+            'current_streak': listening_streak['current_streak'],
+            'longest_streak': listening_streak['longest_streak'],
+            'last_scrobble_date': listening_streak['last_scrobble_date'],
+
+            # Time-based stats
+            'estimated_listening_hours': round(listening_time['estimated_total_hours'], 1),
+            'estimated_listening_days': round(listening_time['estimated_total_days'], 1),
+            'average_track_duration': round(listening_time['average_track_duration'] / 60, 1) if listening_time['average_track_duration'] > 0 else None,
+
+            # Activity stats
+            'scrobbles_last_7_days': recent_activity['scrobbles_7_days'],
+            'scrobbles_last_30_days': recent_activity['scrobbles_30_days'],
+            'daily_average_7_days': round(recent_activity['daily_average_7_days'], 1),
+            'daily_average_30_days': round(recent_activity['daily_average_30_days'], 1),
+
+            # Top items
+            'top_artist': top_items['top_artist'],
+            'top_album': top_items['top_album'],
+            'top_track': top_items['top_track'],
         }
+
+        # Calculate change indicators for recent activity
+        scrobble_change = None
+        if recent_activity['scrobbles_7_days'] > 0 and recent_activity['scrobbles_30_days'] > recent_activity['scrobbles_7_days']:
+            # Calculate weekly trend
+            prev_week_estimate = (recent_activity['scrobbles_30_days'] - recent_activity['scrobbles_7_days']) / 3  # Rough weekly average
+            if prev_week_estimate > 0:
+                change_pct = ((recent_activity['scrobbles_7_days'] - prev_week_estimate) / prev_week_estimate) * 100
+                direction = 'up' if change_pct > 0 else 'down'
+                scrobble_change = {
+                    'direction': direction,
+                    'percentage': abs(change_pct),
+                    'text': f"{'↑' if direction == 'up' else '↓'} {abs(change_pct):.1f}% vs last week"
+                }
+
+        enhanced_stats['scrobble_change'] = scrobble_change
+
+        # Context for template
+        context = {
+            'stats': enhanced_stats,
+            'recent_tracks': recent_tracks_formatted,
+            'sync_status': sync_status,
+            'dashboard_data': dashboard_data,  # Full data for advanced components
+        }
+
+        # Log performance
+        load_time = (timezone.now() - start_time).total_seconds()
+        logger.info("Dashboard loaded successfully", extra={
+            'load_time_seconds': load_time,
+            'scrobble_count': enhanced_stats['total_scrobbles'],
+            'recent_tracks_count': len(recent_tracks_formatted)
+        })
 
     except Exception as e:
-        logger.error("Error fetching dashboard data", exc_info=True)
+        logger.error("Error fetching enhanced dashboard data", exc_info=True)
+
+        # Fallback to basic dashboard
         context = {
-            'stats': {},
+            'stats': {
+                'total_scrobbles': 0,
+                'unique_artists': 0,
+                'unique_albums': 0,
+                'unique_tracks': 0,
+            },
             'recent_tracks': [],
-            'last_sync': None,
+            'sync_status': {
+                'status': 'error',
+                'last_sync': None,
+                'error_message': 'Failed to load dashboard data'
+            },
+            'dashboard_data': None,
         }
+
+    # Handle partial template requests for htmx updates
+    partial = request.GET.get('partial')
+    if partial:
+        if partial == 'stats':
+            return render(request, 'core/partials/dashboard_stats.html', context)
+        elif partial == 'recent':
+            return render(request, 'core/partials/recent_tracks.html', context)
+        elif partial == 'sync':
+            return render(request, 'core/partials/sync_status.html', context)
 
     return render(request, 'core/index.html', context)
 

@@ -1,0 +1,27 @@
+{% load dashboard_extras %}
+
+<div class="stat-card{% if link %} stat-card-clickable{% endif %}"{% if link %} onclick="window.location.href='{{ link }}'"{% endif %}>
+    <div class="stat-card-header">
+        {% if icon %}
+        <div class="stat-icon">
+            {{ icon|safe }}
+        </div>
+        {% endif %}
+        <div class="stat-content">
+            <div class="stat-value">{{ value|format_number }}</div>
+            <div class="stat-label">{{ title }}</div>
+            {% if subtitle %}
+            <div class="stat-subtitle">{{ subtitle }}</div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if change %}
+    <div class="stat-change stat-change-{{ change.direction }}">
+        <span class="stat-change-icon">
+            {% if change.direction == 'up' %}↑{% elif change.direction == 'down' %}↓{% else %}—{% endif %}
+        </span>
+        <span class="stat-change-text">{{ change.text }}</span>
+    </div>
+    {% endif %}
+</div>
