@@ -7,7 +7,7 @@ from django.shortcuts import render, get_object_or_404
 from django.db.models import Count, Q, Max
 from django.utils import timezone
 from django.http import Http404
-from datetime import timedelta
+from datetime import timedelta, datetime
 from music.models import Artist, Album, Track, Scrobble
 from core.exceptions import APIError, DataValidationError
 from .serializers import (
@@ -56,6 +56,41 @@ class RecentTracksPagination(PageNumberPagination):
         })
 
 
+class TopArtistsPagination(PageNumberPagination):
+    """
+    Custom pagination for Top Artists API to match Story 10 requirements.
+    """
+    page_size = 10
+    page_size_query_param = 'limit'
+    max_page_size = 100
+
+    def get_page_size(self, request):
+        """Get page size with Story 10 validation (min 1, max 100, default 10)."""
+        if self.page_size_query_param:
+            try:
+                page_size = int(request.query_params[self.page_size_query_param])
+                if page_size < 1:
+                    return 1
+                elif page_size > self.max_page_size:
+                    return self.max_page_size
+                return page_size
+            except (KeyError, ValueError):
+                pass
+        return self.page_size
+
+    def get_paginated_response(self, data):
+        """Return Story 10 compliant response format."""
+        period = getattr(self, '_period', 'all')
+        total_scrobbles = getattr(self, '_total_scrobbles', 0)
+
+        return Response({
+            'period': period,
+            'results': data,
+            'count': len(data),
+            'total_scrobbles': total_scrobbles
+        })
+
+
 class StatsViewSet(viewsets.ViewSet):
     """
     Stats API viewset for music analytics
@@ -67,14 +102,23 @@ class StatsViewSet(viewsets.ViewSet):
         self.logger = logging.getLogger('stats.api')
 
     def get_time_filter(self, request):
-        """Get time filter based on period parameter."""
-        period = request.query_params.get('period', '30d')
+        """Get time filter based on period parameter or custom date range."""
+        # Check for custom date range first
+        from_date = request.query_params.get('from_date')
+        to_date = request.query_params.get('to_date')
+
+        if from_date or to_date:
+            return self.parse_date_range(from_date, to_date, request)
+
+        # Use period-based filtering
+        period = request.query_params.get('period', 'all')
         now = timezone.now()
 
         time_filters = {
             '7d': now - timedelta(days=7),
             '30d': now - timedelta(days=30),
             '90d': now - timedelta(days=90),
+            '180d': now - timedelta(days=180),
             '365d': now - timedelta(days=365),
             'all': None
         }
@@ -89,9 +133,68 @@ class StatsViewSet(viewsets.ViewSet):
                 }
             )
             # Return default instead of raising error
-            period = '30d'
+            period = 'all'
 
-        return time_filters.get(period, time_filters['30d'])
+        return time_filters.get(period, time_filters['all'])
+
+    def parse_date_range(self, from_date, to_date, request):
+        """Parse custom date range from query parameters."""
+        try:
+            parsed_from = None
+            parsed_to = None
+
+            if from_date:
+                parsed_from = timezone.make_aware(datetime.strptime(from_date, '%Y-%m-%d'))
+
+            if to_date:
+                # Set to end of day for to_date
+                parsed_to = timezone.make_aware(
+                    datetime.strptime(to_date, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+                )
+
+            # Validation: from_date should be before to_date
+            if parsed_from and parsed_to and parsed_from > parsed_to:
+                raise APIError(
+                    "from_date must be before to_date",
+                    status_code=400,
+                    error_code="INVALID_DATE_RANGE"
+                )
+
+            # Return tuple (from_date, to_date) instead of single date
+            return (parsed_from, parsed_to)
+
+        except ValueError as e:
+            self.logger.warning(
+                f"Invalid date format provided: from_date={from_date}, to_date={to_date}",
+                extra={'exception': str(e), 'request_path': request.path}
+            )
+            raise APIError(
+                "Invalid date format. Use YYYY-MM-DD format.",
+                status_code=400,
+                error_code="INVALID_DATE_FORMAT"
+            )
+
+    def get_period_display(self, request):
+        """Get the period string for response display."""
+        from_date = request.query_params.get('from_date')
+        to_date = request.query_params.get('to_date')
+
+        if from_date or to_date:
+            if from_date and to_date:
+                return f"{from_date} to {to_date}"
+            elif from_date:
+                return f"from {from_date}"
+            elif to_date:
+                return f"until {to_date}"
+
+        # Return the validated period (not the raw input)
+        period = request.query_params.get('period', 'all')
+        valid_periods = ['7d', '30d', '90d', '180d', '365d', 'all']
+
+        if period not in valid_periods:
+            return 'all'  # Default to 'all' for invalid periods
+
+        return period
 
     def list(self, request):
         """API overview with available endpoints."""
@@ -106,7 +209,7 @@ class StatsViewSet(viewsets.ViewSet):
                 "albums": "/api/albums/{id}/",
                 "tracks": "/api/tracks/{id}/"
             },
-            "time_periods": ["7d", "30d", "90d", "365d", "all"]
+            "time_periods": ["7d", "30d", "90d", "180d", "365d", "all"]
         })
 
     @action(detail=False)
@@ -131,31 +234,79 @@ class StatsViewSet(viewsets.ViewSet):
 
     @action(detail=False)
     def top_artists(self, request):
-        """Get top artists by play count with time filtering."""
-        time_filter = self.get_time_filter(request)
+        """Get top artists by play count with time filtering (Story 10 compliant)."""
+        try:
+            time_filter = self.get_time_filter(request)
+            period_display = self.get_period_display(request)
+        except APIError:
+            # Re-raise APIError to return proper HTTP status codes
+            raise
+
+        # Build filter conditions for custom date ranges or single date
+        if isinstance(time_filter, tuple):
+            from_date, to_date = time_filter
+            filter_conditions = Q()
+
+            if from_date:
+                filter_conditions &= Q(tracks__scrobbles__timestamp__gte=from_date)
+            if to_date:
+                filter_conditions &= Q(tracks__scrobbles__timestamp__lte=to_date)
+        else:
+            filter_conditions = Q(tracks__scrobbles__timestamp__gte=time_filter) if time_filter else Q()
 
         artists = Artist.objects.annotate(
             scrobble_count=Count(
                 'tracks__scrobbles',
-                filter=Q(tracks__scrobbles__timestamp__gte=time_filter) if time_filter else Q()
+                filter=filter_conditions
             ),
             track_count=Count('tracks', distinct=True),
             album_count=Count('albums', distinct=True),
             last_scrobbled=Max(
                 'tracks__scrobbles__timestamp',
-                filter=Q(tracks__scrobbles__timestamp__gte=time_filter) if time_filter else Q()
+                filter=filter_conditions
             )
         ).filter(scrobble_count__gt=0).order_by('-scrobble_count')
 
-        paginator = self.pagination_class()
+        # Calculate total scrobbles for period
+        total_scrobbles = Scrobble.objects.filter(
+            **self._build_scrobble_filter(time_filter)
+        ).count()
+
+        paginator = TopArtistsPagination()
+        paginator._period = period_display
+        paginator._total_scrobbles = total_scrobbles
+
         page = paginator.paginate_queryset(artists, request)
 
         if page is not None:
             serializer = ArtistListSerializer(page, many=True)
             return paginator.get_paginated_response(serializer.data)
 
+        # Fallback for non-paginated response (shouldn't happen with pagination)
         serializer = ArtistListSerializer(artists, many=True)
-        return Response(serializer.data)
+        return Response({
+            'period': period_display,
+            'results': serializer.data,
+            'count': len(serializer.data),
+            'total_scrobbles': total_scrobbles
+        })
+
+    def _build_scrobble_filter(self, time_filter):
+        """Build filter dict for Scrobble queryset based on time_filter."""
+        if isinstance(time_filter, tuple):
+            from_date, to_date = time_filter
+            filter_kwargs = {}
+
+            if from_date:
+                filter_kwargs['timestamp__gte'] = from_date
+            if to_date:
+                filter_kwargs['timestamp__lte'] = to_date
+
+            return filter_kwargs
+        elif time_filter:
+            return {'timestamp__gte': time_filter}
+        else:
+            return {}
 
     @action(detail=False)
     def top_albums(self, request):

@@ -55,8 +55,10 @@ class ImportError(ScrobblarrError):
 class APIError(ScrobblarrError):
     """Raised when API operations fail."""
 
-    def __init__(self, message, status_code=500, **kwargs):
-        super().__init__(message, error_code='API_ERROR', **kwargs)
+    def __init__(self, message, status_code=500, error_code=None, **kwargs):
+        # Use provided error_code or default to 'API_ERROR'
+        final_error_code = error_code or 'API_ERROR'
+        super().__init__(message, error_code=final_error_code, **kwargs)
         self.status_code = status_code
         self.details.update({'status_code': status_code})
 

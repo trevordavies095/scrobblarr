@@ -97,7 +97,7 @@ class StatsAPITestCase(APITestCase):
         self.assertIn('message', data)
         self.assertIn('endpoints', data)
         self.assertIn('time_periods', data)
-        self.assertEqual(data['time_periods'], ['7d', '30d', '90d', '365d', 'all'])
+        self.assertEqual(data['time_periods'], ['7d', '30d', '90d', '180d', '365d', 'all'])
 
     def test_recent_tracks(self):
         """Test recent tracks endpoint (Story 9 compliance)."""
@@ -379,17 +379,18 @@ class StatsAPITestCase(APITestCase):
     def test_pagination(self):
         """Test that pagination works correctly."""
         url = reverse('stats:stats-recent-tracks')
-        response = self.client.get(url + '?page_size=2')
+        response = self.client.get(url + '?limit=2')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
 
+        # Story 9 compliant format
         self.assertIn('count', data)
-        self.assertIn('next', data)
-        self.assertIn('previous', data)
+        self.assertIn('has_next', data)
+        self.assertIn('has_previous', data)
         self.assertIn('results', data)
 
-        # Should limit results to page_size
+        # Should limit results to limit parameter
         self.assertLessEqual(len(data['results']), 2)
 
     def test_invalid_time_period(self):
@@ -488,3 +489,328 @@ class SerializerTestCase(TestCase):
 
         # Should have 4 total scrobbles (1 from setUp + 3 created)
         self.assertEqual(data['scrobble_count'], 4)
+
+
+class Story10TopArtistsAPITestCase(APITestCase):
+    """Test cases specifically for Story 10: Top Artists API compliance."""
+
+    def setUp(self):
+        """Set up test data for Story 10 testing."""
+        # Create artists
+        self.artist1 = Artist.objects.create(
+            name="Story10 Artist 1",
+            mbid="12345678-1234-1234-1234-123456789012"
+        )
+        self.artist2 = Artist.objects.create(
+            name="Story10 Artist 2",
+            mbid="87654321-4321-4321-4321-210987654321"
+        )
+
+        # Create albums
+        self.album1 = Album.objects.create(
+            name="Story10 Album 1",
+            artist=self.artist1,
+            mbid="11111111-1111-1111-1111-111111111111"
+        )
+
+        # Create tracks
+        self.track1 = Track.objects.create(
+            name="Story10 Track 1",
+            artist=self.artist1,
+            album=self.album1,
+            duration=180
+        )
+        self.track2 = Track.objects.create(
+            name="Story10 Track 2",
+            artist=self.artist2,
+            duration=240
+        )
+
+        # Create scrobbles with specific timestamps for testing
+        now = timezone.now()
+        self.scrobbles = [
+            # Recent scrobbles (within 7d)
+            Scrobble.objects.create(
+                track=self.track1,
+                timestamp=now - timedelta(days=1)
+            ),
+            Scrobble.objects.create(
+                track=self.track1,
+                timestamp=now - timedelta(days=2)
+            ),
+            # Medium range scrobbles (within 30d but not 7d)
+            Scrobble.objects.create(
+                track=self.track1,
+                timestamp=now - timedelta(days=15)
+            ),
+            # Extended range scrobbles (within 180d but not 90d)
+            Scrobble.objects.create(
+                track=self.track2,
+                timestamp=now - timedelta(days=120)
+            ),
+            # Old scrobbles (beyond 365d)
+            Scrobble.objects.create(
+                track=self.track2,
+                timestamp=now - timedelta(days=400)
+            ),
+        ]
+
+    def test_story10_response_format(self):
+        """Test Story 10 compliant response format."""
+        url = reverse('stats:top-artists')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        # Story 10: Check required response structure
+        self.assertIn('period', data)
+        self.assertIn('results', data)
+        self.assertIn('count', data)
+        self.assertIn('total_scrobbles', data)
+
+        # Should NOT have DRF pagination fields
+        self.assertNotIn('next', data)
+        self.assertNotIn('previous', data)
+
+    def test_story10_direct_url_endpoint(self):
+        """Test Story 10 direct URL /api/top-artists/."""
+        url = reverse('stats:top-artists')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        # Should return Story 10 format
+        self.assertIn('period', data)
+        self.assertIn('results', data)
+        self.assertIn('count', data)
+        self.assertIn('total_scrobbles', data)
+
+    def test_story10_default_limit_10(self):
+        """Test Story 10 default limit is 10."""
+        url = reverse('stats:top-artists')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        # Should limit results to 10 by default
+        self.assertLessEqual(len(data['results']), 10)
+
+    def test_story10_limit_parameter_validation(self):
+        """Test Story 10 ?limit=N parameter (min 1, max 100, default 10)."""
+        base_url = reverse('stats:top-artists')
+
+        # Test custom limit within range
+        response = self.client.get(base_url + '?limit=5')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertLessEqual(len(data['results']), 5)
+
+        # Test min limit (should default to 1)
+        response = self.client.get(base_url + '?limit=0')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertLessEqual(len(data['results']), 1)
+
+        # Test max limit (should cap at 100)
+        response = self.client.get(base_url + '?limit=150')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertLessEqual(len(data['results']), 100)
+
+        # Test invalid limit (should default to 10)
+        response = self.client.get(base_url + '?limit=invalid')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertLessEqual(len(data['results']), 10)
+
+    def test_story10_all_time_periods(self):
+        """Test all Story 10 time periods: 7d, 30d, 90d, 180d, 365d, all."""
+        base_url = reverse('stats:top-artists')
+        periods = ['7d', '30d', '90d', '180d', '365d', 'all']
+
+        for period in periods:
+            with self.subTest(period=period):
+                response = self.client.get(base_url + f'?period={period}')
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                data = response.json()
+
+                # Check response format
+                self.assertIn('period', data)
+                self.assertIn('results', data)
+                self.assertIn('count', data)
+                self.assertIn('total_scrobbles', data)
+                self.assertEqual(data['period'], period)
+
+    def test_story10_180d_period_specifically(self):
+        """Test the new 180d period works correctly."""
+        base_url = reverse('stats:top-artists')
+        response = self.client.get(base_url + '?period=180d')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        self.assertEqual(data['period'], '180d')
+        # Should include artist2 which has scrobble at 120 days ago
+        artist_names = [result['name'] for result in data['results']]
+        self.assertIn('Story10 Artist 2', artist_names)
+
+    def test_story10_custom_date_range_filtering(self):
+        """Test Story 10 custom date range via from_date and to_date."""
+        base_url = reverse('stats:top-artists')
+        now = timezone.now()
+
+        # Test date range that should capture some scrobbles
+        from_date = (now - timedelta(days=20)).strftime('%Y-%m-%d')
+        to_date = (now - timedelta(days=10)).strftime('%Y-%m-%d')
+
+        response = self.client.get(base_url + f'?from_date={from_date}&to_date={to_date}')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        self.assertEqual(data['period'], f'{from_date} to {to_date}')
+        self.assertIn('results', data)
+        self.assertIn('total_scrobbles', data)
+
+    def test_story10_custom_date_range_partial(self):
+        """Test Story 10 custom date range with only from_date or to_date."""
+        base_url = reverse('stats:top-artists')
+        now = timezone.now()
+
+        # Test with only from_date
+        from_date = (now - timedelta(days=30)).strftime('%Y-%m-%d')
+        response = self.client.get(base_url + f'?from_date={from_date}')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertEqual(data['period'], f'from {from_date}')
+
+        # Test with only to_date
+        to_date = (now - timedelta(days=10)).strftime('%Y-%m-%d')
+        response = self.client.get(base_url + f'?to_date={to_date}')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertEqual(data['period'], f'until {to_date}')
+
+    def test_story10_invalid_date_format_error(self):
+        """Test Story 10 error handling for invalid date formats."""
+        base_url = reverse('stats:top-artists')
+
+        # Test invalid date format
+        response = self.client.get(base_url + '?from_date=invalid-date')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        data = response.json()
+        self.assertIn('error', data)
+        self.assertEqual(data['error']['code'], 'INVALID_DATE_FORMAT')
+
+    def test_story10_invalid_date_range_error(self):
+        """Test Story 10 error handling for invalid date ranges."""
+        base_url = reverse('stats:top-artists')
+        now = timezone.now()
+
+        # Test from_date after to_date
+        from_date = (now - timedelta(days=10)).strftime('%Y-%m-%d')
+        to_date = (now - timedelta(days=20)).strftime('%Y-%m-%d')
+
+        response = self.client.get(base_url + f'?from_date={from_date}&to_date={to_date}')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        data = response.json()
+        self.assertIn('error', data)
+        self.assertEqual(data['error']['code'], 'INVALID_DATE_RANGE')
+
+    def test_story10_artist_response_fields(self):
+        """Test Story 10 artist response includes required fields."""
+        url = reverse('stats:top-artists')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        if len(data['results']) > 0:
+            first_artist = data['results'][0]
+
+            # Story 10: Required fields
+            self.assertIn('name', first_artist)
+            self.assertIn('scrobble_count', first_artist)
+            self.assertIn('mbid', first_artist)
+
+            # Additional helpful fields
+            self.assertIn('id', first_artist)
+            self.assertIn('track_count', first_artist)
+            self.assertIn('album_count', first_artist)
+
+    def test_story10_results_ordered_by_scrobble_count_desc(self):
+        """Test Story 10 results ordered by scrobble count descending."""
+        url = reverse('stats:top-artists')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        results = data['results']
+        if len(results) > 1:
+            for i in range(len(results) - 1):
+                self.assertGreaterEqual(
+                    results[i]['scrobble_count'],
+                    results[i + 1]['scrobble_count'],
+                    "Results should be ordered by scrobble_count descending"
+                )
+
+    def test_story10_total_scrobbles_calculation(self):
+        """Test Story 10 total_scrobbles field is correctly calculated."""
+        base_url = reverse('stats:top-artists')
+
+        # Test for different periods
+        test_cases = [
+            ('7d', 2),    # 2 scrobbles within 7 days
+            ('30d', 3),   # 3 scrobbles within 30 days
+            ('180d', 4),  # 4 scrobbles within 180 days
+            ('all', 5)    # All 5 scrobbles
+        ]
+
+        for period, expected_count in test_cases:
+            with self.subTest(period=period):
+                response = self.client.get(base_url + f'?period={period}')
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                data = response.json()
+
+                self.assertEqual(data['total_scrobbles'], expected_count,
+                               f"Period {period} should have {expected_count} total scrobbles")
+
+    def test_story10_default_period_is_all(self):
+        """Test Story 10 default period is 'all' (not '30d' like other endpoints)."""
+        url = reverse('stats:top-artists')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertEqual(data['period'], 'all')
+
+    def test_story10_handles_invalid_period_gracefully(self):
+        """Test Story 10 handles invalid periods gracefully with default."""
+        url = reverse('stats:top-artists')
+        response = self.client.get(url + '?period=invalid_period')
+
+        # Should not error, should default to 'all'
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertEqual(data['period'], 'all')
+        self.assertIn('results', data)
+        self.assertIn('total_scrobbles', data)
+
+    def test_story10_empty_results_handling(self):
+        """Test Story 10 handles empty results gracefully."""
+        # Clear all scrobbles
+        Scrobble.objects.all().delete()
+
+        url = reverse('stats:top-artists')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        self.assertEqual(data['period'], 'all')
+        self.assertEqual(data['results'], [])
+        self.assertEqual(data['count'], 0)
+        self.assertEqual(data['total_scrobbles'], 0)
