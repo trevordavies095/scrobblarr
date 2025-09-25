@@ -1,6 +1,7 @@
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from django.db.models import Count
 from datetime import timedelta
 from rest_framework.test import APITestCase
 from rest_framework import status
@@ -1495,3 +1496,460 @@ class Story10TopArtistsAPITestCase(APITestCase):
         self.assertEqual(data['results'], [])
         self.assertEqual(data['count'], 0)
         self.assertEqual(data['total_scrobbles'], 0)
+
+
+class Story16StatisticsSummaryAPITestCase(APITestCase):
+    """Test cases specifically for Story 16: Statistics Summary API compliance."""
+
+    def setUp(self):
+        """Set up test data for Story 16 testing."""
+        # Create artists
+        self.artist1 = Artist.objects.create(
+            name="Summary Artist 1",
+            mbid="12345678-1234-1234-1234-123456789012"
+        )
+        self.artist2 = Artist.objects.create(
+            name="Summary Artist 2",
+            mbid="87654321-4321-4321-4321-210987654321"
+        )
+
+        # Create albums
+        self.album1 = Album.objects.create(
+            name="Summary Album 1",
+            artist=self.artist1,
+            mbid="11111111-1111-1111-1111-111111111111"
+        )
+        self.album2 = Album.objects.create(
+            name="Summary Album 2",
+            artist=self.artist2,
+            mbid="22222222-2222-2222-2222-222222222222"
+        )
+
+        # Create tracks
+        self.track1 = Track.objects.create(
+            name="Summary Track 1",
+            artist=self.artist1,
+            album=self.album1,
+            mbid="33333333-3333-3333-3333-333333333333",
+            duration=180
+        )
+        self.track2 = Track.objects.create(
+            name="Summary Track 2",
+            artist=self.artist1,
+            album=self.album1,
+            duration=240
+        )
+        self.track3 = Track.objects.create(
+            name="Summary Track 3",
+            artist=self.artist2,
+            album=self.album2,
+            duration=200
+        )
+
+        # Create scrobbles with specific patterns for testing
+        base_time = timezone.now() - timedelta(days=100)
+        self.scrobbles = []
+
+        # Artist 1 gets more scrobbles (will be top artist)
+        for i in range(10):
+            self.scrobbles.append(
+                Scrobble.objects.create(
+                    track=self.track1,
+                    timestamp=base_time + timedelta(days=i * 10),
+                    lastfm_reference_id=f"ref{i}"
+                )
+            )
+
+        # Track 2 gets fewer scrobbles
+        for i in range(5):
+            self.scrobbles.append(
+                Scrobble.objects.create(
+                    track=self.track2,
+                    timestamp=base_time + timedelta(days=i * 15 + 5),
+                    lastfm_reference_id=f"ref2{i}"
+                )
+            )
+
+        # Track 3 gets even fewer scrobbles
+        for i in range(3):
+            self.scrobbles.append(
+                Scrobble.objects.create(
+                    track=self.track3,
+                    timestamp=base_time + timedelta(days=i * 20 + 10),
+                    lastfm_reference_id=f"ref3{i}"
+                )
+            )
+
+    def test_story16_basic_response_format(self):
+        """Test Story 16 compliant response format."""
+        url = reverse('stats:stats-summary')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        # Story 16: Check required top-level structure
+        expected_keys = {'totals', 'date_range', 'top_all_time', 'averages'}
+        self.assertEqual(set(data.keys()), expected_keys)
+
+        # Check totals structure
+        totals = data['totals']
+        expected_totals_keys = {'scrobbles', 'artists', 'albums', 'tracks'}
+        self.assertEqual(set(totals.keys()), expected_totals_keys)
+
+        # Check date_range structure
+        date_range = data['date_range']
+        expected_date_keys = {'first_scrobble', 'last_scrobble', 'total_days'}
+        self.assertEqual(set(date_range.keys()), expected_date_keys)
+
+        # Check top_all_time structure
+        top_all_time = data['top_all_time']
+        expected_top_keys = {'artist', 'album', 'track'}
+        self.assertEqual(set(top_all_time.keys()), expected_top_keys)
+
+        # Check averages structure
+        averages = data['averages']
+        expected_avg_keys = {'per_day', 'per_month', 'per_year'}
+        self.assertEqual(set(averages.keys()), expected_avg_keys)
+
+    def test_story16_direct_url_endpoint(self):
+        """Test Story 16 direct URL /api/stats/summary/."""
+        url = reverse('stats:stats-summary')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        # Should return Story 16 format
+        self.assertIn('totals', data)
+        self.assertIn('date_range', data)
+        self.assertIn('top_all_time', data)
+        self.assertIn('averages', data)
+
+    def test_story16_totals_calculation(self):
+        """Test Story 16 totals section is correctly calculated."""
+        url = reverse('stats:stats-summary')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        totals = data['totals']
+
+        # Verify counts match expected values
+        self.assertEqual(totals['scrobbles'], 18)  # 10 + 5 + 3
+        self.assertEqual(totals['artists'], 2)    # artist1, artist2
+        self.assertEqual(totals['albums'], 2)     # album1, album2
+        self.assertEqual(totals['tracks'], 3)     # track1, track2, track3
+
+        # Verify all counts are integers
+        for key, value in totals.items():
+            self.assertIsInstance(value, int)
+            self.assertGreaterEqual(value, 0)
+
+    def test_story16_date_range_calculation(self):
+        """Test Story 16 date_range section is correctly calculated."""
+        url = reverse('stats:stats-summary')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        date_range = data['date_range']
+
+        # Should have first and last scrobble timestamps
+        self.assertIsNotNone(date_range['first_scrobble'])
+        self.assertIsNotNone(date_range['last_scrobble'])
+        self.assertIsInstance(date_range['total_days'], int)
+
+        # Verify ISO 8601 timestamp format with Z suffix
+        self.assertTrue(date_range['first_scrobble'].endswith('Z'))
+        self.assertTrue(date_range['last_scrobble'].endswith('Z'))
+        # More flexible regex to handle Django's isoformat() output with microseconds and timezone
+        self.assertRegex(date_range['first_scrobble'], r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(\+\d{2}:\d{2})?Z$')
+        self.assertRegex(date_range['last_scrobble'], r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(\+\d{2}:\d{2})?Z$')
+
+        # last_scrobble should be greater than or equal to first_scrobble
+        self.assertGreaterEqual(date_range['last_scrobble'], date_range['first_scrobble'])
+
+        # total_days should be positive
+        self.assertGreater(date_range['total_days'], 0)
+
+    def test_story16_top_all_time_calculation(self):
+        """Test Story 16 top_all_time section identifies most played items."""
+        url = reverse('stats:stats-summary')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        top_all_time = data['top_all_time']
+
+        # Should identify the most played items based on our test data
+        self.assertEqual(top_all_time['artist'], 'Summary Artist 1')  # Has 15 total scrobbles vs 3
+        self.assertEqual(top_all_time['album'], 'Summary Album 1')    # Has 15 total scrobbles vs 3
+        self.assertEqual(top_all_time['track'], 'Summary Track 1')    # Has 10 scrobbles (most)
+
+        # Verify all are strings (artist/album/track names)
+        self.assertIsInstance(top_all_time['artist'], str)
+        self.assertIsInstance(top_all_time['album'], str)
+        self.assertIsInstance(top_all_time['track'], str)
+
+    def test_story16_averages_calculation(self):
+        """Test Story 16 averages section is correctly calculated."""
+        url = reverse('stats:stats-summary')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        averages = data['averages']
+
+        # All averages should be numeric (float or int)
+        self.assertIsInstance(averages['per_day'], (int, float))
+        self.assertIsInstance(averages['per_month'], (int, float))
+        self.assertIsInstance(averages['per_year'], (int, float))
+
+        # All averages should be non-negative
+        self.assertGreaterEqual(averages['per_day'], 0)
+        self.assertGreaterEqual(averages['per_month'], 0)
+        self.assertGreaterEqual(averages['per_year'], 0)
+
+        # Logical relationships between averages - allow for reasonable tolerance
+        if averages['per_day'] > 0:
+            # Monthly should be roughly 30 times daily
+            expected_monthly = averages['per_day'] * 30.44
+            self.assertAlmostEqual(averages['per_month'], expected_monthly, delta=expected_monthly * 0.1)
+
+            # Yearly should be roughly 365 times daily
+            expected_yearly = averages['per_day'] * 365.25
+            self.assertAlmostEqual(averages['per_year'], expected_yearly, delta=expected_yearly * 0.1)
+
+    def test_story16_empty_dataset_handling(self):
+        """Test Story 16 handles empty dataset gracefully."""
+        # Clear all data
+        Scrobble.objects.all().delete()
+        Track.objects.all().delete()
+        Album.objects.all().delete()
+        Artist.objects.all().delete()
+
+        url = reverse('stats:stats-summary')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        # Should return zeros for all counts
+        self.assertEqual(data['totals']['scrobbles'], 0)
+        self.assertEqual(data['totals']['artists'], 0)
+        self.assertEqual(data['totals']['albums'], 0)
+        self.assertEqual(data['totals']['tracks'], 0)
+
+        # Should have null values for date range and top items
+        self.assertIsNone(data['date_range']['first_scrobble'])
+        self.assertIsNone(data['date_range']['last_scrobble'])
+        self.assertEqual(data['date_range']['total_days'], 0)
+
+        self.assertIsNone(data['top_all_time']['artist'])
+        self.assertIsNone(data['top_all_time']['album'])
+        self.assertIsNone(data['top_all_time']['track'])
+
+        # Should have zero averages
+        self.assertEqual(data['averages']['per_day'], 0)
+        self.assertEqual(data['averages']['per_month'], 0)
+        self.assertEqual(data['averages']['per_year'], 0)
+
+    def test_story16_single_scrobble_dataset(self):
+        """Test Story 16 handles single scrobble dataset correctly."""
+        # Clear existing data
+        Scrobble.objects.all().delete()
+        Track.objects.all().delete()
+        Album.objects.all().delete()
+        Artist.objects.all().delete()
+
+        # Create minimal dataset with one scrobble
+        artist = Artist.objects.create(name="Single Artist")
+        album = Album.objects.create(name="Single Album", artist=artist)
+        track = Track.objects.create(name="Single Track", artist=artist, album=album)
+        scrobble = Scrobble.objects.create(track=track, timestamp=timezone.now())
+
+        url = reverse('stats:stats-summary')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        # Should have counts of 1
+        self.assertEqual(data['totals']['scrobbles'], 1)
+        self.assertEqual(data['totals']['artists'], 1)
+        self.assertEqual(data['totals']['albums'], 1)
+        self.assertEqual(data['totals']['tracks'], 1)
+
+        # Should identify the single items as top
+        self.assertEqual(data['top_all_time']['artist'], 'Single Artist')
+        self.assertEqual(data['top_all_time']['album'], 'Single Album')
+        self.assertEqual(data['top_all_time']['track'], 'Single Track')
+
+        # First and last scrobble should be the same
+        self.assertEqual(data['date_range']['first_scrobble'], data['date_range']['last_scrobble'])
+        self.assertEqual(data['date_range']['total_days'], 1)
+
+    def test_story16_performance_with_caching(self):
+        """Test Story 16 performance optimization with caching."""
+        url = reverse('stats:stats-summary')
+
+        # First request (cache miss)
+        start_time = timezone.now()
+        response1 = self.client.get(url)
+        first_duration = timezone.now() - start_time
+
+        self.assertEqual(response1.status_code, status.HTTP_200_OK)
+
+        # Second request (cache hit) - should be faster
+        start_time = timezone.now()
+        response2 = self.client.get(url)
+        second_duration = timezone.now() - start_time
+
+        self.assertEqual(response2.status_code, status.HTTP_200_OK)
+
+        # Results should be identical
+        self.assertEqual(response1.json(), response2.json())
+
+        # Second request should be significantly faster (cached)
+        # Allow some tolerance for test environment variations
+        self.assertLess(second_duration.total_seconds(), first_duration.total_seconds() * 0.8)
+
+    def test_story16_cache_invalidation(self):
+        """Test Story 16 cache invalidation when new data is added."""
+        url = reverse('stats:stats-summary')
+
+        # Get initial response
+        response1 = self.client.get(url)
+        self.assertEqual(response1.status_code, status.HTTP_200_OK)
+        initial_count = response1.json()['totals']['scrobbles']
+
+        # Add new scrobble to change latest timestamp
+        new_scrobble = Scrobble.objects.create(
+            track=self.track1,
+            timestamp=timezone.now(),
+            lastfm_reference_id="cache_invalidation_test"
+        )
+
+        # Get response after adding data (should be cache miss due to new latest timestamp)
+        response2 = self.client.get(url)
+        self.assertEqual(response2.status_code, status.HTTP_200_OK)
+        updated_count = response2.json()['totals']['scrobbles']
+
+        # Count should be incremented
+        self.assertEqual(updated_count, initial_count + 1)
+
+    def test_story16_data_consistency(self):
+        """Test Story 16 data consistency across all fields."""
+        url = reverse('stats:stats-summary')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        # Total scrobbles should equal sum of individual track scrobbles
+        total_scrobbles_db = Scrobble.objects.count()
+        self.assertEqual(data['totals']['scrobbles'], total_scrobbles_db)
+
+        # Artists count should equal distinct artists with scrobbles
+        artists_with_scrobbles = Artist.objects.filter(tracks__scrobbles__isnull=False).distinct().count()
+        self.assertEqual(data['totals']['artists'], artists_with_scrobbles)
+
+        # Albums count should equal distinct albums with scrobbles
+        albums_with_scrobbles = Album.objects.filter(tracks__scrobbles__isnull=False).distinct().count()
+        self.assertEqual(data['totals']['albums'], albums_with_scrobbles)
+
+        # Tracks count should equal distinct tracks with scrobbles
+        tracks_with_scrobbles = Track.objects.filter(scrobbles__isnull=False).distinct().count()
+        self.assertEqual(data['totals']['tracks'], tracks_with_scrobbles)
+
+        # Top artist should actually be the top artist
+        top_artist_db = (
+            Artist.objects
+            .annotate(play_count=Count('tracks__scrobbles'))
+            .order_by('-play_count')
+            .first()
+        )
+        if top_artist_db:
+            self.assertEqual(data['top_all_time']['artist'], top_artist_db.name)
+
+    def test_story16_field_types_and_format(self):
+        """Test Story 16 ensures all fields have correct types and formats."""
+        url = reverse('stats:stats-summary')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        # Verify totals field types
+        for field in ['scrobbles', 'artists', 'albums', 'tracks']:
+            self.assertIsInstance(data['totals'][field], int)
+            self.assertGreaterEqual(data['totals'][field], 0)
+
+        # Verify date_range field types
+        if data['date_range']['first_scrobble']:
+            self.assertIsInstance(data['date_range']['first_scrobble'], str)
+        if data['date_range']['last_scrobble']:
+            self.assertIsInstance(data['date_range']['last_scrobble'], str)
+        self.assertIsInstance(data['date_range']['total_days'], int)
+
+        # Verify top_all_time field types (can be None or str)
+        for field in ['artist', 'album', 'track']:
+            value = data['top_all_time'][field]
+            self.assertTrue(value is None or isinstance(value, str))
+
+        # Verify averages field types
+        for field in ['per_day', 'per_month', 'per_year']:
+            self.assertIsInstance(data['averages'][field], (int, float))
+            self.assertGreaterEqual(data['averages'][field], 0)
+
+    def test_story16_response_matches_specification_example(self):
+        """Test Story 16 response format matches specification example structure."""
+        url = reverse('stats:stats-summary')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        # Should match the exact structure from Story 16 specification
+        specification_keys = {
+            'totals': {'scrobbles', 'artists', 'albums', 'tracks'},
+            'date_range': {'first_scrobble', 'last_scrobble', 'total_days'},
+            'top_all_time': {'artist', 'album', 'track'},
+            'averages': {'per_day', 'per_month', 'per_year'}
+        }
+
+        for section, expected_fields in specification_keys.items():
+            self.assertIn(section, data)
+            self.assertEqual(set(data[section].keys()), expected_fields)
+
+    def test_story16_handles_missing_albums_gracefully(self):
+        """Test Story 16 handles tracks without albums gracefully."""
+        # Create track without album
+        track_no_album = Track.objects.create(
+            name="No Album Track",
+            artist=self.artist1
+        )
+        Scrobble.objects.create(
+            track=track_no_album,
+            timestamp=timezone.now(),
+            lastfm_reference_id="no_album_test"
+        )
+
+        url = reverse('stats:stats-summary')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        # Should still work correctly
+        self.assertGreater(data['totals']['scrobbles'], 0)
+        self.assertGreater(data['totals']['tracks'], 0)
+
+        # Albums count should only count tracks that have albums
+        albums_with_scrobbles = Album.objects.filter(tracks__scrobbles__isnull=False).distinct().count()
+        self.assertEqual(data['totals']['albums'], albums_with_scrobbles)

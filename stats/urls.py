@@ -19,6 +19,8 @@ urlpatterns = [
     path('top-tracks/', views.StatsViewSet.as_view({'get': 'top_tracks'}), name='top-tracks'),
     # Story 13: Direct scrobbles chart endpoint
     path('scrobbles/chart/', views.StatsViewSet.as_view({'get': 'chart_data'}), name='scrobbles-chart'),
+    # Story 16: Statistics summary endpoint
+    path('stats/summary/', views.StatsViewSet.as_view({'get': 'summary'}), name='stats-summary'),
     # Individual resource endpoints - ID lookup
     path('artists/<int:pk>/', views.StatsViewSet.as_view({'get': 'artists'}), name='artist-detail'),
     path('albums/<int:pk>/', views.StatsViewSet.as_view({'get': 'albums'}), name='album-detail'),

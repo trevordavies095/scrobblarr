@@ -4,10 +4,11 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import render, get_object_or_404
-from django.db.models import Count, Q, Max
+from django.db.models import Count, Q, Max, Min
 from django.db import models
 from django.utils import timezone
 from django.http import Http404
+from django.core.cache import cache
 from datetime import timedelta, datetime
 from music.models import Artist, Album, Track, Scrobble
 from core.exceptions import APIError, DataValidationError
@@ -17,7 +18,7 @@ from .serializers import (
     TrackListSerializer, TrackDetailSerializer,
     ScrobbleListSerializer, RecentTracksSerializer,
     TopAlbumsSerializer, TopTracksSerializer,
-    ScrobblesChartSerializer
+    ScrobblesChartSerializer, StatisticsSummarySerializer
 )
 
 
@@ -360,6 +361,7 @@ class StatsViewSet(viewsets.ViewSet):
                 "top_albums": "/api/top-albums/?period=30d",
                 "top_tracks": "/api/top-tracks/?period=30d",
                 "scrobbles_chart": "/api/scrobbles/chart/?period=30d&granularity=monthly",
+                "summary": "/api/stats/summary/",
                 "artists": "/api/artists/{id}/",
                 "albums": "/api/albums/{id}/",
                 "tracks": "/api/tracks/{id}/"
@@ -1008,3 +1010,149 @@ class StatsViewSet(viewsets.ViewSet):
                 exc_info=True
             )
             raise APIError("Error retrieving track data", status_code=500)
+
+    @action(detail=False)
+    def summary(self, request):
+        """
+        Get overall listening statistics summary (Story 16 compliant).
+        Returns totals, date range, top all-time items, and listening averages.
+        """
+        try:
+            # Generate cache key based on latest scrobble timestamp for smart invalidation
+            latest_scrobble = Scrobble.objects.order_by('-timestamp').first()
+            if not latest_scrobble:
+                # Handle empty dataset case
+                empty_summary_data = {
+                    'totals': {
+                        'scrobbles': 0,
+                        'artists': 0,
+                        'albums': 0,
+                        'tracks': 0
+                    },
+                    'date_range': {
+                        'first_scrobble': None,
+                        'last_scrobble': None,
+                        'total_days': 0
+                    },
+                    'top_all_time': {
+                        'artist': None,
+                        'album': None,
+                        'track': None
+                    },
+                    'averages': {
+                        'per_day': 0,
+                        'per_month': 0,
+                        'per_year': 0
+                    }
+                }
+                serializer = StatisticsSummarySerializer(empty_summary_data)
+                return Response(serializer.data)
+
+            # Create cache key based on latest scrobble timestamp
+            latest_timestamp = latest_scrobble.timestamp.isoformat()
+            cache_key = f"stats_summary_{hash(latest_timestamp)}"
+
+            # Try to get cached data
+            cached_data = cache.get(cache_key)
+            if cached_data:
+                self.logger.info(
+                    "Statistics summary served from cache",
+                    extra={'cache_key': cache_key}
+                )
+                serializer = StatisticsSummarySerializer(cached_data)
+                return Response(serializer.data)
+
+            self.logger.info(
+                "Calculating statistics summary (cache miss)",
+                extra={'cache_key': cache_key}
+            )
+
+            # Calculate summary statistics
+            summary_data = self._calculate_summary_statistics()
+
+            # Cache the results for 15 minutes (900 seconds)
+            cache.set(cache_key, summary_data, 900)
+
+            serializer = StatisticsSummarySerializer(summary_data)
+            return Response(serializer.data)
+
+        except Exception as e:
+            self.logger.error(
+                "Error generating statistics summary",
+                extra={'exception': str(e)},
+                exc_info=True
+            )
+            raise APIError("Error retrieving statistics summary", status_code=500)
+
+    def _calculate_summary_statistics(self):
+        """Calculate comprehensive summary statistics for Story 16 compliance."""
+        # Basic totals using efficient database aggregations
+        total_scrobbles = Scrobble.objects.count()
+        unique_artists = Artist.objects.filter(tracks__scrobbles__isnull=False).distinct().count()
+        unique_albums = Album.objects.filter(tracks__scrobbles__isnull=False).distinct().count()
+        unique_tracks = Track.objects.filter(scrobbles__isnull=False).distinct().count()
+
+        # Date range calculation
+        date_range_data = Scrobble.objects.aggregate(
+            first_scrobble=Min('timestamp'),
+            last_scrobble=Max('timestamp')
+        )
+
+        first_scrobble = date_range_data['first_scrobble']
+        last_scrobble = date_range_data['last_scrobble']
+
+        # Calculate total days
+        total_days = 0
+        if first_scrobble and last_scrobble:
+            total_days = (last_scrobble.date() - first_scrobble.date()).days + 1
+
+        # Top all-time items (most played)
+        top_artist = (
+            Artist.objects
+            .annotate(play_count=Count('tracks__scrobbles'))
+            .order_by('-play_count')
+            .first()
+        )
+
+        top_album = (
+            Album.objects
+            .annotate(play_count=Count('tracks__scrobbles'))
+            .order_by('-play_count')
+            .first()
+        )
+
+        top_track = (
+            Track.objects
+            .annotate(play_count=Count('scrobbles'))
+            .order_by('-play_count')
+            .first()
+        )
+
+        # Calculate averages (handle division by zero)
+        per_day_avg = round(total_scrobbles / total_days, 1) if total_days > 0 else 0
+        per_month_avg = round(total_scrobbles / (total_days / 30.44), 1) if total_days > 0 else 0
+        per_year_avg = round(total_scrobbles / (total_days / 365.25), 1) if total_days > 0 else 0
+
+        return {
+            'totals': {
+                'scrobbles': total_scrobbles,
+                'artists': unique_artists,
+                'albums': unique_albums,
+                'tracks': unique_tracks
+            },
+            'date_range': {
+                'first_scrobble': first_scrobble.isoformat() + 'Z' if first_scrobble else None,
+                'last_scrobble': last_scrobble.isoformat() + 'Z' if last_scrobble else None,
+                'total_days': total_days
+            },
+            'top_all_time': {
+                'artist': top_artist.name if top_artist else None,
+                'album': top_album.name if top_album else None,
+                'track': top_track.name if top_track else None
+            },
+            'averages': {
+                'per_day': per_day_avg,
+                'per_month': per_month_avg,
+                'per_year': per_year_avg
+            }
+        }

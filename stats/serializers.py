@@ -369,3 +369,17 @@ class AlbumStory15Serializer(serializers.Serializer):
         """Get chart data for this album using existing chart infrastructure."""
         # This will be populated by the view with chart data
         return self.context.get('chart_data', {})
+
+
+class StatisticsSummarySerializer(serializers.Serializer):
+    """
+    Story 16 compliant serializer for statistics summary API.
+    Returns overall listening statistics with totals, date range, top all-time items, and averages.
+    """
+    totals = serializers.DictField()
+    date_range = serializers.DictField()
+    top_all_time = serializers.DictField()
+    averages = serializers.DictField()
+
+    class Meta:
+        fields = ['totals', 'date_range', 'top_all_time', 'averages']
