@@ -55,32 +55,32 @@
                 <nav class="nav" aria-label="Main navigation">
                     <ul class="nav-list">
                         <li class="nav-item">
-                            <a href="{% url 'core:index' %}" class="nav-link{% if request.resolver_match.url_name == 'index' %} nav-link-active{% endif %}">
+                            <a href="{% url 'core:index' %}" class="nav-link{% if request.resolver_match and request.resolver_match.url_name == 'index' %} nav-link-active{% endif %}">
                                 Home
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a href="{% url 'core:recent' %}" class="nav-link{% if request.resolver_match.url_name == 'recent' %} nav-link-active{% endif %}">
+                            <a href="{% url 'core:recent' %}" class="nav-link{% if request.resolver_match and request.resolver_match.url_name == 'recent' %} nav-link-active{% endif %}">
                                 Recent
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a href="{% url 'core:top-artists' %}" class="nav-link{% if request.resolver_match.url_name == 'top-artists' %} nav-link-active{% endif %}">
+                            <a href="{% url 'core:top-artists' %}" class="nav-link{% if request.resolver_match and request.resolver_match.url_name == 'top-artists' %} nav-link-active{% endif %}">
                                 Top Artists
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a href="{% url 'core:top-albums' %}" class="nav-link{% if request.resolver_match.url_name == 'top-albums' %} nav-link-active{% endif %}">
+                            <a href="{% url 'core:top-albums' %}" class="nav-link{% if request.resolver_match and request.resolver_match.url_name == 'top-albums' %} nav-link-active{% endif %}">
                                 Top Albums
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a href="{% url 'core:top-tracks' %}" class="nav-link{% if request.resolver_match.url_name == 'top-tracks' %} nav-link-active{% endif %}">
+                            <a href="{% url 'core:top-tracks' %}" class="nav-link{% if request.resolver_match and request.resolver_match.url_name == 'top-tracks' %} nav-link-active{% endif %}">
                                 Top Tracks
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a href="{% url 'core:charts' %}" class="nav-link{% if request.resolver_match.url_name == 'charts' %} nav-link-active{% endif %}">
+                            <a href="{% url 'core:charts' %}" class="nav-link{% if request.resolver_match and request.resolver_match.url_name == 'charts' %} nav-link-active{% endif %}">
                                 Charts
                             </a>
                         </li>

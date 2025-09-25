@@ -1,0 +1,54 @@
+<div class="filters-row">
+    <!-- Time Period Selector -->
+    <div class="filter-group">
+        <label class="filter-label">Time Period</label>
+        <div class="period-selector">
+            {% for period in period_options %}
+            <a href="?period={{ period.value }}&limit={{ selected_limit }}"
+               class="period-btn{% if period.active %} active{% endif %}"
+               hx-get="{% url 'core:top-artists' %}?period={{ period.value }}&limit={{ selected_limit }}&partial=list"
+               hx-target="#artists-content"
+               hx-push-url="?period={{ period.value }}&limit={{ selected_limit }}"
+               hx-swap="outerHTML">
+                {{ period.label }}
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Limit Selector -->
+    <div class="filter-group">
+        <label class="filter-label" for="limit-select">Show</label>
+        <select id="limit-select" class="limit-dropdown"
+                hx-get="{% url 'core:top-artists' %}"
+                hx-target="#artists-content"
+                hx-trigger="change"
+                hx-include="[name='period']"
+                hx-swap="outerHTML">
+            {% for limit in limit_options %}
+            <option value="{{ limit.value }}"{% if limit.active %} selected{% endif %}>
+                {{ limit.label }}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <!-- Export Actions -->
+    <div class="filter-group">
+        <label class="filter-label">Export</label>
+        <div class="export-actions">
+            <a href="?period={{ selected_period }}&limit={{ selected_limit }}&export=csv"
+               class="export-btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7,10 12,15 17,10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                CSV
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Hidden inputs for htmx -->
+<input type="hidden" name="period" value="{{ selected_period }}">

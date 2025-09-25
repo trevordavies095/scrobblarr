@@ -645,7 +645,8 @@ class StatsViewSet(viewsets.ViewSet):
         ).annotate(
             scrobble_count=Count(
                 'tracks__scrobbles',
-                filter=filter_conditions
+                filter=filter_conditions,
+                distinct=True
             ),
             track_count=Count('tracks', distinct=True),
             album_count=Count('albums', distinct=True),
