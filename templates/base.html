@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Scrobblarr - Your Last.fm Analytics Dashboard">
+    <title>{% block title %}Scrobblarr{% endblock %}</title>
+
+    {% load static %}
+
+    <!-- CSS -->
+    <link rel="stylesheet" href="{% static 'css/base.css' %}">
+    <link rel="stylesheet" href="{% static 'css/components.css' %}">
+    {% block extra_css %}{% endblock %}
+
+    <!-- External Libraries -->
+    <script src="https://unpkg.com/htmx.org@2.0.3" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.js" defer></script>
+
+    <!-- Favicon and theme -->
+    <link rel="icon" href="{% static 'img/favicon.ico' %}" type="image/x-icon">
+    <meta name="theme-color" content="#1a1a1a">
+</head>
+<body>
+    <!-- Skip navigation link for accessibility -->
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <!-- Logo/Brand -->
+                <div class="brand">
+                    <a href="{% url 'core:index' %}" class="brand-link">
+                        <div class="brand-logo">
+                            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <!-- Simple music note icon -->
+                                <path d="M12 3V20.5C12 22.43 10.43 24 8.5 24S5 22.43 5 20.5 6.57 17 8.5 17c.54 0 1.05.13 1.5.35V3h7l-1 3h-4z" fill="currentColor"/>
+                                <circle cx="23" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="2"/>
+                                <path d="m9 12 5 5L22 9" stroke="currentColor" stroke-width="2" fill="none"/>
+                            </svg>
+                        </div>
+                        <span class="brand-text">Scrobblarr</span>
+                    </a>
+                </div>
+
+                <!-- Mobile menu toggle -->
+                <button class="mobile-menu-toggle" aria-label="Toggle navigation menu" aria-expanded="false">
+                    <span class="hamburger-line"></span>
+                    <span class="hamburger-line"></span>
+                    <span class="hamburger-line"></span>
+                </button>
+
+                <!-- Navigation -->
+                <nav class="nav" aria-label="Main navigation">
+                    <ul class="nav-list">
+                        <li class="nav-item">
+                            <a href="{% url 'core:index' %}" class="nav-link{% if request.resolver_match.url_name == 'index' %} nav-link-active{% endif %}">
+                                Home
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'core:recent' %}" class="nav-link{% if request.resolver_match.url_name == 'recent' %} nav-link-active{% endif %}">
+                                Recent
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'core:top-artists' %}" class="nav-link{% if request.resolver_match.url_name == 'top-artists' %} nav-link-active{% endif %}">
+                                Top Artists
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'core:top-albums' %}" class="nav-link{% if request.resolver_match.url_name == 'top-albums' %} nav-link-active{% endif %}">
+                                Top Albums
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'core:top-tracks' %}" class="nav-link{% if request.resolver_match.url_name == 'top-tracks' %} nav-link-active{% endif %}">
+                                Top Tracks
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'core:charts' %}" class="nav-link{% if request.resolver_match.url_name == 'charts' %} nav-link-active{% endif %}">
+                                Charts
+                            </a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Breadcrumb Navigation -->
+    {% if breadcrumbs %}
+    <div class="breadcrumb-container">
+        <div class="container">
+            <nav aria-label="Breadcrumb">
+                <ol class="breadcrumb">
+                    {% for crumb in breadcrumbs %}
+                        <li class="breadcrumb-item{% if forloop.last %} breadcrumb-current{% endif %}">
+                            {% if crumb.url and not forloop.last %}
+                                <a href="{{ crumb.url }}" class="breadcrumb-link">{{ crumb.title }}</a>
+                            {% else %}
+                                <span class="breadcrumb-text">{{ crumb.title }}</span>
+                            {% endif %}
+                        </li>
+                    {% endfor %}
+                </ol>
+            </nav>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Main Content -->
+    <main id="main-content" class="main">
+        <div class="container">
+            <!-- Loading Spinner -->
+            <div id="loading-spinner" class="loading-spinner hidden" aria-hidden="true">
+                <div class="spinner"></div>
+                <span class="loading-text">Loading...</span>
+            </div>
+
+            <!-- Error Messages -->
+            <div id="error-messages" class="error-messages hidden" role="alert" aria-live="polite">
+            </div>
+
+            <!-- Success Messages -->
+            <div id="success-messages" class="success-messages hidden" role="alert" aria-live="polite">
+            </div>
+
+            <!-- Page Content -->
+            {% block content %}
+            {% endblock %}
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-info">
+                    <p class="footer-text">
+                        Scrobblarr - Your Last.fm Analytics Dashboard
+                    </p>
+                    <p class="footer-version">
+                        Version 3.0.0-alpha
+                    </p>
+                </div>
+                <div class="footer-links">
+                    <a href="{% url 'core:health_check' %}" class="footer-link">System Status</a>
+                    <a href="/admin/" class="footer-link">Admin</a>
+                    <a href="https://github.com/anthropics/claude-code" target="_blank" rel="noopener" class="footer-link">
+                        Documentation
+                    </a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="{% static 'js/base.js' %}"></script>
+    <script src="{% static 'js/htmx-helpers.js' %}"></script>
+    {% block extra_js %}{% endblock %}
+
+    <!-- htmx Configuration -->
+    <script>
+        // Configure htmx for loading states and error handling
+        document.addEventListener('htmx:beforeRequest', function(evt) {
+            document.getElementById('loading-spinner').classList.remove('hidden');
+        });
+
+        document.addEventListener('htmx:afterRequest', function(evt) {
+            document.getElementById('loading-spinner').classList.add('hidden');
+        });
+
+        document.addEventListener('htmx:responseError', function(evt) {
+            showError('Failed to load data. Please try again.');
+        });
+
+        document.addEventListener('htmx:timeout', function(evt) {
+            showError('Request timed out. Please check your connection.');
+        });
+    </script>
+</body>
+</html>

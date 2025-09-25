@@ -17,11 +17,165 @@ from music.models import Artist, Album, Track, Scrobble
 logger = logging.getLogger('core')
 
 
+def _format_relative_time(timestamp):
+    """
+    Format a timestamp as relative time (e.g., "2 hours ago").
+    """
+    now = timezone.now()
+    diff = now - timestamp
+
+    if diff.days > 0:
+        if diff.days == 1:
+            return "1 day ago"
+        return f"{diff.days} days ago"
+
+    hours = diff.seconds // 3600
+    if hours > 0:
+        if hours == 1:
+            return "1 hour ago"
+        return f"{hours} hours ago"
+
+    minutes = (diff.seconds // 60) % 60
+    if minutes > 0:
+        if minutes == 1:
+            return "1 minute ago"
+        return f"{minutes} minutes ago"
+
+    return "Just now"
+
+
 def index(request):
     """
     Home page view for Scrobblarr.
     """
-    return HttpResponse("Welcome to Scrobblarr - Your Last.fm Analytics Dashboard")
+    # Get basic statistics for the dashboard
+    try:
+        stats = {
+            'total_scrobbles': Scrobble.objects.count(),
+            'unique_artists': Artist.objects.count(),
+            'unique_albums': Album.objects.count(),
+            'unique_tracks': Track.objects.count(),
+        }
+
+        # Get recent tracks (last 10)
+        recent_tracks = Scrobble.objects.select_related(
+            'track', 'track__artist', 'track__album'
+        ).order_by('-timestamp')[:10]
+
+        # Format recent tracks for display
+        recent_tracks_formatted = []
+        for scrobble in recent_tracks:
+            recent_tracks_formatted.append({
+                'track_name': scrobble.track.name,
+                'artist_name': scrobble.track.artist.name,
+                'album_name': scrobble.track.album.name if scrobble.track.album else None,
+                'timestamp': scrobble.timestamp,
+                'relative_time': _format_relative_time(scrobble.timestamp),
+            })
+
+        # Get last sync time (placeholder for now)
+        last_sync = timezone.now() - timedelta(hours=1)  # Mock data
+
+        context = {
+            'stats': stats,
+            'recent_tracks': recent_tracks_formatted,
+            'last_sync': last_sync,
+        }
+
+    except Exception as e:
+        logger.error("Error fetching dashboard data", exc_info=True)
+        context = {
+            'stats': {},
+            'recent_tracks': [],
+            'last_sync': None,
+        }
+
+    return render(request, 'core/index.html', context)
+
+
+def recent_tracks(request):
+    """
+    Recent tracks page (placeholder for Phase 3).
+    """
+    context = {
+        'breadcrumbs': [
+            {'title': 'Home', 'url': '/'},
+            {'title': 'Recent Tracks'},
+        ]
+    }
+    return render(request, 'core/coming_soon.html', {
+        'page_title': 'Recent Tracks',
+        'description': 'View your complete recent listening history with filtering and search capabilities.',
+        **context
+    })
+
+
+def top_artists(request):
+    """
+    Top artists page (placeholder for Phase 3).
+    """
+    context = {
+        'breadcrumbs': [
+            {'title': 'Home', 'url': '/'},
+            {'title': 'Top Artists'},
+        ]
+    }
+    return render(request, 'core/coming_soon.html', {
+        'page_title': 'Top Artists',
+        'description': 'Discover your most played artists across different time periods.',
+        **context
+    })
+
+
+def top_albums(request):
+    """
+    Top albums page (placeholder for Phase 3).
+    """
+    context = {
+        'breadcrumbs': [
+            {'title': 'Home', 'url': '/'},
+            {'title': 'Top Albums'},
+        ]
+    }
+    return render(request, 'core/coming_soon.html', {
+        'page_title': 'Top Albums',
+        'description': 'Explore your favorite albums and their listening statistics.',
+        **context
+    })
+
+
+def top_tracks(request):
+    """
+    Top tracks page (placeholder for Phase 3).
+    """
+    context = {
+        'breadcrumbs': [
+            {'title': 'Home', 'url': '/'},
+            {'title': 'Top Tracks'},
+        ]
+    }
+    return render(request, 'core/coming_soon.html', {
+        'page_title': 'Top Tracks',
+        'description': 'Identify your most played songs and track preferences.',
+        **context
+    })
+
+
+def charts(request):
+    """
+    Charts and visualization page (placeholder for Phase 3).
+    """
+    context = {
+        'breadcrumbs': [
+            {'title': 'Home', 'url': '/'},
+            {'title': 'Charts'},
+        ]
+    }
+    return render(request, 'core/coming_soon.html', {
+        'page_title': 'Charts & Analytics',
+        'description': 'Visualize your listening patterns with interactive charts and analytics.',
+        **context
+    })
 
 
 @api_view(['GET'])

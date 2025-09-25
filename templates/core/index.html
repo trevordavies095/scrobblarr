@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+
+{% block title %}Home - Scrobblarr{% endblock %}
+
+{% block content %}
+<div class="home-hero">
+    <div class="hero-content">
+        <h1 class="hero-title">Welcome to Scrobblarr</h1>
+        <p class="hero-subtitle">Your music listening history, consolidated and analyzed</p>
+    </div>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_scrobbles|default:"--" }}</div>
+        <div class="stat-label">Total Scrobbles</div>
+        {% if stats.scrobble_change %}
+        <div class="stat-change stat-change-{{ stats.scrobble_change.direction }}">
+            {{ stats.scrobble_change.text }}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.unique_artists|default:"--" }}</div>
+        <div class="stat-label">Unique Artists</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.unique_albums|default:"--" }}</div>
+        <div class="stat-label">Unique Albums</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.unique_tracks|default:"--" }}</div>
+        <div class="stat-label">Unique Tracks</div>
+    </div>
+</div>
+
+{% if recent_tracks %}
+<section class="recent-section">
+    <div class="section-header">
+        <h2 class="section-title">Recent Tracks</h2>
+        <a href="{% url 'core:recent' %}" class="btn btn-ghost btn-sm">View All</a>
+    </div>
+
+    <div class="recent-tracks">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Track</th>
+                    <th>Artist</th>
+                    <th>Album</th>
+                    <th>Time</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for track in recent_tracks %}
+                <tr>
+                    <td>
+                        <a href="#" class="table-link">{{ track.track_name }}</a>
+                    </td>
+                    <td>
+                        <a href="#" class="table-link">{{ track.artist_name }}</a>
+                    </td>
+                    <td class="table-meta">
+                        {% if track.album_name %}
+                            <a href="#" class="table-link">{{ track.album_name }}</a>
+                        {% else %}
+                            <span class="table-meta">Unknown Album</span>
+                        {% endif %}
+                    </td>
+                    <td class="table-meta">
+                        <time datetime="{{ track.timestamp|date:'c' }}" title="{{ track.timestamp|date:'Y-m-d H:i:s' }}">
+                            {{ track.relative_time }}
+                        </time>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endif %}
+
+<section class="quick-nav">
+    <div class="section-header">
+        <h2 class="section-title">Quick Navigation</h2>
+    </div>
+
+    <div class="quick-nav-grid">
+        <a href="{% url 'core:recent' %}" class="quick-nav-card">
+            <div class="quick-nav-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M12 1v6m0 6v6"/>
+                    <path d="m21 12-6-3-6 3-6-3"/>
+                </svg>
+            </div>
+            <div class="quick-nav-content">
+                <div class="quick-nav-title">Recent Activity</div>
+                <div class="quick-nav-description">View your latest scrobbles</div>
+            </div>
+        </a>
+
+        <a href="{% url 'core:top-artists' %}" class="quick-nav-card">
+            <div class="quick-nav-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9 18V5l12-2v13"/>
+                    <circle cx="6" cy="18" r="3"/>
+                    <circle cx="18" cy="16" r="3"/>
+                </svg>
+            </div>
+            <div class="quick-nav-content">
+                <div class="quick-nav-title">Top Artists</div>
+                <div class="quick-nav-description">Discover your most played artists</div>
+            </div>
+        </a>
+
+        <a href="{% url 'core:top-albums' %}" class="quick-nav-card">
+            <div class="quick-nav-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <circle cx="9" cy="9" r="2"/>
+                    <path d="M21 15l-3.086-3.086a2 2 0 00-2.828 0L6 21"/>
+                </svg>
+            </div>
+            <div class="quick-nav-content">
+                <div class="quick-nav-title">Top Albums</div>
+                <div class="quick-nav-description">Explore your favorite albums</div>
+            </div>
+        </a>
+
+        <a href="{% url 'core:charts' %}" class="quick-nav-card">
+            <div class="quick-nav-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 3v18h18"/>
+                    <path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/>
+                </svg>
+            </div>
+            <div class="quick-nav-content">
+                <div class="quick-nav-title">Charts & Analytics</div>
+                <div class="quick-nav-description">Visualize your listening patterns</div>
+            </div>
+        </a>
+    </div>
+</section>
+
+{% if last_sync %}
+<div class="sync-info">
+    <div class="sync-status">
+        <span class="sync-label">Last updated:</span>
+        <time datetime="{{ last_sync|date:'c' }}">{{ last_sync|date:'Y-m-d H:i:s' }}</time>
+    </div>
+</div>
+{% endif %}
+
+<style>
+/* Home page specific styles */
+.home-hero {
+    text-align: center;
+    padding: 3rem 0;
+    margin-bottom: 3rem;
+    background: linear-gradient(135deg, rgba(187, 134, 252, 0.1), rgba(98, 0, 238, 0.1));
+    border-radius: 16px;
+    border: 1px solid rgba(187, 134, 252, 0.2);
+}
+
+.hero-title {
+    font-size: 3rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    background: linear-gradient(135deg, #bb86fc, #6200ee);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.hero-subtitle {
+    font-size: 1.25rem;
+    color: #999;
+    margin: 0;
+    font-weight: 400;
+}
+
+.recent-section {
+    margin-bottom: 3rem;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.section-title {
+    font-size: 1.75rem;
+    font-weight: 600;
+    color: #e0e0e0;
+    margin: 0;
+}
+
+.quick-nav-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+}
+
+.quick-nav-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    background-color: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 1.5rem;
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.2s ease;
+}
+
+.quick-nav-card:hover {
+    border-color: #bb86fc;
+    box-shadow: 0 4px 20px rgba(187, 134, 252, 0.1);
+    transform: translateY(-2px);
+    text-decoration: none;
+    color: inherit;
+}
+
+.quick-nav-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, #bb86fc, #6200ee);
+    border-radius: 12px;
+    color: #fff;
+    flex-shrink: 0;
+}
+
+.quick-nav-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #e0e0e0;
+    margin-bottom: 0.25rem;
+}
+
+.quick-nav-description {
+    font-size: 0.875rem;
+    color: #999;
+    line-height: 1.4;
+}
+
+.sync-info {
+    text-align: center;
+    padding: 2rem 0;
+    border-top: 1px solid #333;
+    margin-top: 2rem;
+}
+
+.sync-status {
+    color: #666;
+    font-size: 0.9rem;
+}
+
+.sync-label {
+    margin-right: 0.5rem;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .hero-title {
+        font-size: 2.5rem;
+    }
+
+    .hero-subtitle {
+        font-size: 1.125rem;
+    }
+
+    .section-header {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: stretch;
+    }
+
+    .quick-nav-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    .quick-nav-card {
+        padding: 1.25rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .hero-title {
+        font-size: 2rem;
+    }
+
+    .home-hero {
+        padding: 2rem 0;
+    }
+
+    .quick-nav-icon {
+        width: 40px;
+        height: 40px;
+    }
+}
+</style>
+{% endblock %}

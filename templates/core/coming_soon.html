@@ -1,0 +1,306 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }} - Scrobblarr{% endblock %}
+
+{% block content %}
+<div class="coming-soon-container">
+    <div class="coming-soon-content">
+        <div class="coming-soon-icon">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12,6 12,12 16,14"/>
+            </svg>
+        </div>
+
+        <h1 class="coming-soon-title">{{ page_title }}</h1>
+
+        <p class="coming-soon-description">
+            {{ description }}
+        </p>
+
+        <div class="coming-soon-status">
+            <div class="status-badge">
+                <span class="status-icon">🚧</span>
+                <span class="status-text">Coming in Phase 3</span>
+            </div>
+        </div>
+
+        <div class="coming-soon-details">
+            <h3>What's Coming:</h3>
+            <ul class="feature-list">
+                {% if page_title == "Recent Tracks" %}
+                    <li>Complete recent listening history with timestamps</li>
+                    <li>Search and filter functionality</li>
+                    <li>Pagination for large datasets</li>
+                    <li>Export capabilities</li>
+                {% elif page_title == "Top Artists" %}
+                    <li>Time period filtering (7d, 30d, 90d, 1y, all time)</li>
+                    <li>Play count rankings and percentages</li>
+                    <li>Artist detail pages with statistics</li>
+                    <li>Interactive progress visualizations</li>
+                {% elif page_title == "Top Albums" %}
+                    <li>Album rankings across time periods</li>
+                    <li>Track-by-track listening statistics</li>
+                    <li>Album detail pages with complete info</li>
+                    <li>Artist cross-references</li>
+                {% elif page_title == "Top Tracks" %}
+                    <li>Most played songs with detailed stats</li>
+                    <li>Duration and frequency analysis</li>
+                    <li>Track detail pages</li>
+                    <li>Artist and album connections</li>
+                {% elif page_title == "Charts & Analytics" %}
+                    <li>Interactive Chart.js visualizations</li>
+                    <li>Scrobbles over time with custom ranges</li>
+                    <li>Monthly and yearly listening patterns</li>
+                    <li>Export charts as images</li>
+                {% endif %}
+            </ul>
+        </div>
+
+        <div class="coming-soon-actions">
+            <a href="{% url 'core:index' %}" class="btn btn-primary">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 12H5"/>
+                    <polyline points="12,19 5,12 12,5"/>
+                </svg>
+                Back to Dashboard
+            </a>
+
+            <a href="/api/" class="btn btn-ghost">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                </svg>
+                View API Data
+            </a>
+        </div>
+
+        <div class="progress-info">
+            <div class="progress-header">
+                <span class="progress-label">Implementation Progress</span>
+                <span class="progress-percentage">0%</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: 0%"></div>
+            </div>
+            <p class="progress-note">
+                This page is part of Phase 3 development. The underlying API endpoints are ready and functional.
+            </p>
+        </div>
+    </div>
+</div>
+
+<style>
+.coming-soon-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+    padding: 2rem 0;
+}
+
+.coming-soon-content {
+    max-width: 600px;
+    text-align: center;
+    background-color: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 16px;
+    padding: 3rem 2rem;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.coming-soon-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 80px;
+    height: 80px;
+    background: linear-gradient(135deg, rgba(187, 134, 252, 0.2), rgba(98, 0, 238, 0.2));
+    border: 2px solid rgba(187, 134, 252, 0.3);
+    border-radius: 50%;
+    color: #bb86fc;
+    margin-bottom: 1.5rem;
+}
+
+.coming-soon-title {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    background: linear-gradient(135deg, #bb86fc, #6200ee);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.coming-soon-description {
+    font-size: 1.125rem;
+    color: #999;
+    margin-bottom: 2rem;
+    line-height: 1.6;
+}
+
+.coming-soon-status {
+    margin-bottom: 2rem;
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background-color: rgba(255, 193, 7, 0.1);
+    border: 1px solid rgba(255, 193, 7, 0.3);
+    color: #ffca28;
+    padding: 0.75rem 1.5rem;
+    border-radius: 24px;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.status-icon {
+    font-size: 1.2rem;
+}
+
+.coming-soon-details {
+    text-align: left;
+    margin-bottom: 2rem;
+    background-color: #262626;
+    border-radius: 12px;
+    padding: 1.5rem;
+    border: 1px solid #333;
+}
+
+.coming-soon-details h3 {
+    color: #bb86fc;
+    font-size: 1.25rem;
+    margin-bottom: 1rem;
+    font-weight: 600;
+}
+
+.feature-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.feature-list li {
+    position: relative;
+    padding-left: 1.5rem;
+    margin-bottom: 0.75rem;
+    color: #e0e0e0;
+    line-height: 1.5;
+}
+
+.feature-list li::before {
+    content: '✓';
+    position: absolute;
+    left: 0;
+    top: 0;
+    color: #bb86fc;
+    font-weight: bold;
+}
+
+.feature-list li:last-child {
+    margin-bottom: 0;
+}
+
+.coming-soon-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+}
+
+.progress-info {
+    text-align: left;
+    background-color: #1a1a1a;
+    border-radius: 12px;
+    padding: 1.5rem;
+    border: 1px solid #333;
+}
+
+.progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.progress-label {
+    font-weight: 500;
+    color: #e0e0e0;
+}
+
+.progress-percentage {
+    font-weight: 600;
+    color: #bb86fc;
+    font-family: monospace;
+}
+
+.progress-bar {
+    height: 8px;
+    background-color: #333;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 1rem;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #bb86fc, #6200ee);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.progress-note {
+    color: #999;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    margin: 0;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .coming-soon-content {
+        margin: 0 1rem;
+        padding: 2rem 1.5rem;
+    }
+
+    .coming-soon-title {
+        font-size: 2rem;
+    }
+
+    .coming-soon-description {
+        font-size: 1rem;
+    }
+
+    .coming-soon-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .btn {
+        justify-content: center;
+    }
+}
+
+@media (max-width: 480px) {
+    .coming-soon-content {
+        padding: 1.5rem 1rem;
+    }
+
+    .coming-soon-title {
+        font-size: 1.75rem;
+    }
+
+    .coming-soon-icon {
+        width: 64px;
+        height: 64px;
+    }
+
+    .coming-soon-details,
+    .progress-info {
+        padding: 1rem;
+    }
+}
+</style>
+{% endblock %}
