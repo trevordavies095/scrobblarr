@@ -401,25 +401,180 @@ class StatsAPITestCase(APITestCase):
             # mbid can be None or string
             self.assertTrue(album['mbid'] is None or isinstance(album['mbid'], str))
 
-    def test_top_tracks(self):
-        """Test top tracks endpoint."""
-        url = reverse('stats:stats-top-tracks')
+    def test_top_tracks_basic(self):
+        """Test basic top tracks endpoint functionality."""
+        url = reverse('stats:top-tracks')
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
+
+        # Story 12 required response format
+        self.assertIn('period', data)
         self.assertIn('results', data)
+        self.assertIn('count', data)
+        self.assertIn('total_scrobbles', data)
+        self.assertEqual(data['period'], 'all')
 
         if len(data['results']) > 0:
             first_track = data['results'][0]
-            self.assertIn('id', first_track)
-            self.assertIn('name', first_track)
-            self.assertIn('artist_name', first_track)
-            self.assertIn('artist_id', first_track)
-            self.assertIn('album_name', first_track)
-            self.assertIn('album_id', first_track)
+            # Story 12 required fields: track, artist, album, scrobble_count, mbid
+            self.assertIn('track', first_track)
+            self.assertIn('artist', first_track)
+            self.assertIn('album', first_track)
             self.assertIn('scrobble_count', first_track)
-            self.assertIn('duration', first_track)
+            self.assertIn('mbid', first_track)
+
+    def test_top_tracks_time_periods(self):
+        """Test all supported time periods for top tracks."""
+        periods = ['7d', '30d', '90d', '180d', '365d', 'all']
+
+        for period in periods:
+            with self.subTest(period=period):
+                url = reverse('stats:top-tracks')
+                response = self.client.get(url, {'period': period})
+
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                data = response.json()
+                self.assertEqual(data['period'], period)
+                self.assertIn('results', data)
+                self.assertIn('count', data)
+                self.assertIn('total_scrobbles', data)
+
+    def test_top_tracks_limit_parameter(self):
+        """Test limit parameter validation for top tracks."""
+        url = reverse('stats:top-tracks')
+
+        # Test default limit (10)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertLessEqual(data['count'], 10)
+
+        # Test custom limit
+        response = self.client.get(url, {'limit': 5})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertLessEqual(data['count'], 5)
+
+        # Test max limit (100)
+        response = self.client.get(url, {'limit': 150})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertLessEqual(data['count'], 100)  # Should be capped at 100
+
+        # Test min limit (1)
+        response = self.client.get(url, {'limit': 0})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        # Should default to 1 for invalid values
+
+    def test_top_tracks_custom_date_range(self):
+        """Test custom date range filtering for top tracks."""
+        url = reverse('stats:top-tracks')
+
+        # Test with both from_date and to_date
+        response = self.client.get(url, {
+            'from_date': '2023-01-01',
+            'to_date': '2023-12-31'
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertEqual(data['period'], '2023-01-01 to 2023-12-31')
+
+        # Test with only from_date
+        response = self.client.get(url, {'from_date': '2023-06-01'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertEqual(data['period'], 'from 2023-06-01')
+
+        # Test with only to_date
+        response = self.client.get(url, {'to_date': '2023-06-30'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertEqual(data['period'], 'until 2023-06-30')
+
+    def test_top_tracks_invalid_period(self):
+        """Test invalid period handling for top tracks."""
+        url = reverse('stats:top-tracks')
+
+        # Invalid period should default to 'all'
+        response = self.client.get(url, {'period': 'invalid'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertEqual(data['period'], 'all')
+
+    def test_top_tracks_invalid_date_format(self):
+        """Test invalid date format handling for top tracks."""
+        url = reverse('stats:top-tracks')
+
+        # Invalid date format should return error
+        response = self.client.get(url, {'from_date': 'invalid-date'})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # Invalid date range (from_date after to_date)
+        response = self.client.get(url, {
+            'from_date': '2023-12-31',
+            'to_date': '2023-01-01'
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_top_tracks_ordering(self):
+        """Test that top tracks are ordered by scrobble count descending."""
+        url = reverse('stats:top-tracks')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        if len(data['results']) > 1:
+            # Check that results are ordered by scrobble_count descending
+            for i in range(len(data['results']) - 1):
+                current_count = data['results'][i]['scrobble_count']
+                next_count = data['results'][i + 1]['scrobble_count']
+                self.assertGreaterEqual(current_count, next_count)
+
+    def test_top_tracks_missing_album_handling(self):
+        """Test that tracks with missing album information are handled gracefully."""
+        url = reverse('stats:top-tracks')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        # Verify that tracks can have null album values
+        for track in data['results']:
+            self.assertIn('album', track)
+            # Album can be None or string
+            self.assertTrue(track['album'] is None or isinstance(track['album'], str))
+
+    def test_top_tracks_response_format(self):
+        """Test that top tracks response matches Story 12 specification."""
+        url = reverse('stats:top-tracks')
+        response = self.client.get(url, {'period': '7d'})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        # Top-level structure
+        expected_keys = {'period', 'results', 'count', 'total_scrobbles'}
+        self.assertEqual(set(data.keys()), expected_keys)
+        self.assertEqual(data['period'], '7d')
+
+        # Individual track structure (if any results)
+        if data['results']:
+            track = data['results'][0]
+            expected_track_keys = {'track', 'artist', 'album', 'scrobble_count', 'mbid'}
+            self.assertEqual(set(track.keys()), expected_track_keys)
+
+            # Verify field types
+            self.assertIsInstance(track['track'], str)
+            self.assertIsInstance(track['artist'], str)
+            # album can be None or string
+            self.assertTrue(track['album'] is None or isinstance(track['album'], str))
+            self.assertIsInstance(track['scrobble_count'], int)
+            # mbid can be None or string
+            self.assertTrue(track['mbid'] is None or isinstance(track['mbid'], str))
 
     def test_artist_detail(self):
         """Test artist detail endpoint."""

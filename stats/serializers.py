@@ -1,8 +1,6 @@
 from rest_framework import serializers
 from music.models import Artist, Album, Track, Scrobble
-from django.db.models import Count, Max
-from django.utils import timezone
-from datetime import timedelta
+from django.db.models import Count
 import logging
 
 logger = logging.getLogger('stats.serializers')
@@ -46,6 +44,26 @@ class TopAlbumsSerializer(serializers.ModelSerializer):
     class Meta:
         model = Album
         fields = ['album', 'artist', 'scrobble_count', 'mbid']
+
+
+class TopTracksSerializer(serializers.ModelSerializer):
+    """
+    Story 12 compliant serializer for top tracks API.
+    Returns track, artist, album, scrobble_count, mbid format.
+    """
+    track = serializers.CharField(source='name', read_only=True)
+    artist = serializers.CharField(source='artist.name', read_only=True)
+    album = serializers.SerializerMethodField()
+    scrobble_count = serializers.IntegerField(read_only=True)
+    mbid = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = Track
+        fields = ['track', 'artist', 'album', 'scrobble_count', 'mbid']
+
+    def get_album(self, obj):
+        """Get album name, handling tracks with missing album information."""
+        return obj.album.name if obj.album else None
 
 
 class TrackListSerializer(serializers.ModelSerializer):
