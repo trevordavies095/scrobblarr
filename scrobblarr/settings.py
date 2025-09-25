@@ -44,6 +44,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'django.middleware.gzip.GZipMiddleware',  # Story 18: Response compression
+    'stats.performance.PerformanceMiddleware',  # Story 18: Performance monitoring
     'core.middleware.SecurityMiddleware',
     'core.middleware.LoggingMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -83,6 +85,54 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+        # SQLite Performance Optimizations (Story 18)
+        'OPTIONS': {
+            'init_command': """
+                PRAGMA journal_mode=WAL;
+                PRAGMA synchronous=NORMAL;
+                PRAGMA cache_size=20000;
+                PRAGMA temp_store=MEMORY;
+                PRAGMA mmap_size=268435456;
+                PRAGMA page_size=32768;
+                PRAGMA foreign_keys=ON;
+                PRAGMA query_only=OFF;
+                PRAGMA read_uncommitted=ON;
+                PRAGMA recursive_triggers=ON;
+                PRAGMA threads=4;
+            """,
+        },
+        'CONN_MAX_AGE': 300,  # Keep connections alive for 5 minutes
+    }
+}
+
+
+# Caching Configuration (Story 18)
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
+        'LOCATION': BASE_DIR / 'cache',
+        'TIMEOUT': 300,  # 5 minutes default
+        'OPTIONS': {
+            'MAX_ENTRIES': 10000,
+            'CULL_FREQUENCY': 3,
+        }
+    },
+    'api_cache': {
+        'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
+        'LOCATION': BASE_DIR / 'cache' / 'api',
+        'TIMEOUT': 3600,  # 1 hour for expensive operations
+        'OPTIONS': {
+            'MAX_ENTRIES': 5000,
+            'CULL_FREQUENCY': 3,
+        }
+    },
+    'query_cache': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'query-cache',
+        'TIMEOUT': 300,  # 5 minutes for query results
+        'OPTIONS': {
+            'MAX_ENTRIES': 1000,
+        }
     }
 }
 
@@ -135,12 +185,12 @@ MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
-# Django REST Framework configuration
+# Django REST Framework configuration (Story 18 optimized)
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny',
     ],
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'DEFAULT_PAGINATION_CLASS': 'stats.pagination.OptimizedPageNumberPagination',
     'PAGE_SIZE': 50,
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend',
@@ -158,7 +208,14 @@ REST_FRAMEWORK = {
         'stats_summary': '100/hour',
         'chart_data': '200/hour',
         'expensive_query': '50/hour'
-    }
+    },
+    # Story 18 Performance Optimizations
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+    ],
+    'COMPACT_JSON': True,  # Remove whitespace from JSON responses
+    'UNICODE_JSON': False,  # Use ASCII JSON for smaller response size
+    'COERCE_DECIMAL_TO_STRING': False,  # Keep numbers as numbers
 }
 
 

@@ -16,6 +16,7 @@ from core.exceptions import (
     InvalidDateFormatError, InvalidDateRangeError, InvalidLimitError,
     InvalidGranularityError
 )
+from .cache import cached_api_response, cache_expensive_computation, QueryOptimizer
 from .decorators import (
     validate_recent_tracks_params,
     validate_top_artists_params,
@@ -403,8 +404,10 @@ class StatsViewSet(viewsets.ViewSet):
             # Get the appropriate date format for SQLite
             date_format = self._get_date_trunc_format(granularity)
 
-            # Build the query with artist filtering
-            scrobbles_qs = Scrobble.objects.filter(track__artist=artist)
+            # Build the query with artist filtering using optimized queryset
+            scrobbles_qs = QueryOptimizer.get_optimized_scrobbles_queryset().filter(
+                track__artist=artist
+            ).only('id', 'timestamp')
 
             # Apply time filtering
             if time_filter:
@@ -499,8 +502,10 @@ class StatsViewSet(viewsets.ViewSet):
             # Get the appropriate date format for SQLite
             date_format = self._get_date_trunc_format(granularity)
 
-            # Build the query with album filtering (only scrobbles from this album's tracks)
-            scrobbles_qs = Scrobble.objects.filter(track__album=album)
+            # Build the query with album filtering using optimized queryset
+            scrobbles_qs = QueryOptimizer.get_optimized_scrobbles_queryset().filter(
+                track__album=album
+            ).only('id', 'timestamp')
 
             # Aggregate by period (using same pattern as existing chart_data method)
             from django.db.models import Count
@@ -565,6 +570,7 @@ class StatsViewSet(viewsets.ViewSet):
             }
 
     @action(detail=False)
+    @cached_api_response(timeout=300, cache_backend='api_cache')
     @validate_recent_tracks_params()
     def recent_tracks(self, request):
         """
@@ -594,9 +600,8 @@ class StatsViewSet(viewsets.ViewSet):
         }
         ```
         """
-        scrobbles = Scrobble.objects.select_related(
-            'track', 'track__artist', 'track__album'
-        ).order_by('-timestamp')
+        # Use optimized queryset from QueryOptimizer
+        scrobbles = QueryOptimizer.get_optimized_scrobbles_queryset()
 
         # Use validated limit from decorator
         limit = request.validated_params['limit']
@@ -612,6 +617,7 @@ class StatsViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
     @action(detail=False)
+    @cached_api_response(timeout=1800, cache_backend='api_cache')
     def top_artists(self, request):
         """Get top artists by play count with time filtering (Story 10 compliant)."""
         try:
@@ -633,7 +639,10 @@ class StatsViewSet(viewsets.ViewSet):
         else:
             filter_conditions = Q(tracks__scrobbles__timestamp__gte=time_filter) if time_filter else Q()
 
-        artists = Artist.objects.annotate(
+        # Optimize with select_related for foreign key lookups
+        artists = Artist.objects.select_related().prefetch_related(
+            'tracks', 'albums'
+        ).annotate(
             scrobble_count=Count(
                 'tracks__scrobbles',
                 filter=filter_conditions
@@ -688,6 +697,7 @@ class StatsViewSet(viewsets.ViewSet):
             return {}
 
     @action(detail=False)
+    @cached_api_response(timeout=1800, cache_backend='api_cache')
     def top_albums(self, request):
         """Get top albums by play count with time filtering (Story 11 compliant)."""
         try:
@@ -746,6 +756,7 @@ class StatsViewSet(viewsets.ViewSet):
         })
 
     @action(detail=False)
+    @cached_api_response(timeout=1800, cache_backend='api_cache')
     def top_tracks(self, request):
         """Get top tracks by play count with time filtering (Story 12 compliant)."""
         try:
@@ -803,6 +814,7 @@ class StatsViewSet(viewsets.ViewSet):
         })
 
     @action(detail=False, url_path='scrobbles/chart')
+    @cached_api_response(timeout=3600, cache_backend='api_cache')
     def chart_data(self, request):
         """Get scrobbles over time chart data (Story 13 compliant)."""
         try:
@@ -821,8 +833,10 @@ class StatsViewSet(viewsets.ViewSet):
                 error_code="INVALID_GRANULARITY"
             )
 
-        # Build base queryset with time filtering
-        base_queryset = Scrobble.objects.all()
+        # Build base queryset with time filtering using optimized queryset
+        base_queryset = QueryOptimizer.get_optimized_scrobbles_queryset().only(
+            'id', 'timestamp'
+        )
 
         # Apply time filtering
         if isinstance(time_filter, tuple):
@@ -883,21 +897,32 @@ class StatsViewSet(viewsets.ViewSet):
         })
 
     @action(detail=True)
+    @cached_api_response(timeout=1800, cache_backend='api_cache')
     def artists(self, request, pk=None):
         """Get artist detail with statistics (Story 14 compliant)."""
         try:
             # Support both ID and MBID lookup
             if self.is_valid_uuid(pk):
                 # MBID lookup
+                # Optimize with select_related and prefetch_related
                 artist = get_object_or_404(
-                    Artist.objects.prefetch_related('albums', 'tracks'),
+                    Artist.objects.prefetch_related(
+                        'albums__tracks__scrobbles',
+                        'tracks__scrobbles',
+                        'tracks__album'
+                    ),
                     mbid=pk
                 )
                 lookup_type = 'mbid'
             else:
                 # ID lookup
+                # Optimize with select_related and prefetch_related
                 artist = get_object_or_404(
-                    Artist.objects.prefetch_related('albums', 'tracks'),
+                    Artist.objects.prefetch_related(
+                        'albums__tracks__scrobbles',
+                        'tracks__scrobbles',
+                        'tracks__album'
+                    ),
                     pk=pk
                 )
                 lookup_type = 'id'
@@ -950,6 +975,7 @@ class StatsViewSet(viewsets.ViewSet):
             raise APIError("Error retrieving artist data", status_code=500)
 
     @action(detail=True)
+    @cached_api_response(timeout=1800, cache_backend='api_cache')
     def albums(self, request, pk=None):
         """Get album detail with track listings (Story 15 compliant)."""
         try:
@@ -1014,6 +1040,7 @@ class StatsViewSet(viewsets.ViewSet):
             raise APIError("Error retrieving album data", status_code=500)
 
     @action(detail=True)
+    @cached_api_response(timeout=900, cache_backend='api_cache')
     def tracks(self, request, pk=None):
         """Get track detail with scrobble history."""
         try:
@@ -1044,6 +1071,7 @@ class StatsViewSet(viewsets.ViewSet):
             raise APIError("Error retrieving track data", status_code=500)
 
     @action(detail=False)
+    @cached_api_response(timeout=1800, cache_backend='api_cache', use_data_version=True)
     def summary(self, request):
         """
         Get overall listening statistics summary (Story 16 compliant).
@@ -1136,6 +1164,7 @@ class StatsViewSet(viewsets.ViewSet):
             )
             raise APIError("Error retrieving statistics summary", status_code=500)
 
+    @cache_expensive_computation(timeout=3600, invalidate_on_new_data=True)
     def _calculate_summary_statistics(self):
         """Calculate comprehensive summary statistics for Story 16 compliance."""
         # Basic totals using efficient database aggregations
