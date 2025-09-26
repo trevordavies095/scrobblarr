@@ -84,7 +84,7 @@
 /* Stats Cards */
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 1.5rem;
     margin-bottom: 2rem;
 }
@@ -758,13 +758,73 @@
     flex-direction: column;
     gap: 0.5rem;
     min-width: 200px;
+    align-items: flex-start;
+}
+
+/* Horizontal filter layout - labels beside controls */
+.filter-section {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+/* Period selector container */
+.period-selector {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+/* Filter dropdowns and selects */
+.limit-dropdown,
+.filter-select {
+    padding: 0.5rem 2.5rem 0.5rem 1rem;
+    background-color: #333;
+    color: #e0e0e0;
+    border: 1px solid #444;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    appearance: none;
+    line-height: 1.2;
+    min-height: 2.5rem !important;
+    display: inline-flex;
+    align-items: center;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23e0e0e0' stroke-width='2'%3E%3Cpolyline points='6,9 12,15 18,9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    transition: all 0.2s ease;
+}
+
+.limit-dropdown:hover,
+.filter-select:hover {
+    background-color: #444;
+    border-color: #bb86fc;
+}
+
+/* For vertical responsive layout - columns stack on mobile */
+@media (max-width: 768px) {
+    .filter-section {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+
+    .period-selector {
+        justify-content: center;
+    }
 }
 
 .filter-label {
-    font-size: 0.875rem;
+    font-size: 0.9rem;
     font-weight: 500;
     color: #999;
     margin: 0;
+    line-height: 1.2;
+    display: flex;
+    align-items: center;
+    min-height: 2.5rem;
 }
 
 .filter-input,
@@ -776,6 +836,10 @@
     color: #e0e0e0;
     font-size: 0.875rem;
     transition: all 0.2s ease;
+    min-height: 2.5rem !important;
+    display: inline-flex;
+    align-items: center;
+    line-height: 1.2;
 }
 
 .filter-input:focus,
@@ -789,6 +853,70 @@
     display: flex;
     gap: 0.5rem;
     margin-top: 1.5rem;
+}
+
+/* Shared period button and time period option styles */
+.period-btn,
+.time-period-option {
+    padding: 0.5rem 1rem;
+    background-color: #333;
+    color: #e0e0e0;
+    border: 1px solid #444;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    line-height: 1.2;
+    min-height: 2.5rem !important;
+}
+
+.period-btn:hover,
+.time-period-option:hover {
+    background-color: #444;
+    border-color: #bb86fc;
+    color: #bb86fc;
+}
+
+.period-btn.active,
+.time-period-option.active {
+    background-color: #bb86fc;
+    border-color: #bb86fc;
+    color: #121212;
+    font-weight: 600;
+}
+
+/* Defensive CSS for consistent alignment across all pages */
+.filter-section .filter-label,
+.artist-filters .filter-label,
+.charts-filters .filter-label,
+.filters-section .filter-label {
+    display: flex !important;
+    align-items: center !important;
+    min-height: 2.5rem !important;
+    margin: 0 !important;
+    line-height: 1.2 !important;
+}
+
+.filter-section .period-btn,
+.filter-section .time-period-option,
+.artist-filters .period-btn,
+.artist-filters .time-period-option {
+    min-height: 2.5rem !important;
+    display: inline-flex !important;
+    align-items: center !important;
+}
+
+/* Mobile responsive period buttons */
+@media (max-width: 480px) {
+    .period-btn,
+    .time-period-option {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.8rem;
+    }
 }
 
 .results-info {
@@ -1019,4 +1147,12 @@
 
 ::-webkit-scrollbar-thumb:hover {
     background: #777;
+}
+
+/* Fallback for non-WebKit browsers */
+@supports not ((-webkit-appearance: none)) {
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: #555 #333;
+    }
 }

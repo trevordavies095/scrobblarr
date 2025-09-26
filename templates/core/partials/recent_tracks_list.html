@@ -45,10 +45,9 @@
                         <span class="track-name">{{ scrobble.track_name }}</span>
                     </td>
                     <td>
-                        <!-- Future: Link to artist detail page -->
-                        <span class="artist-link" title="View artist details (coming soon)">
+                        <a href="{% url 'core:artist-detail' scrobble.artist_id %}" class="artist-link" title="View artist details">
                             {{ scrobble.artist_name }}
-                        </span>
+                        </a>
                     </td>
                     <td>
                         {% if scrobble.album_name %}

@@ -1,6 +1,6 @@
 <div class="filters-row">
     <!-- Time Period Selector -->
-    <div class="filter-group">
+    <div class="filter-section">
         <label class="filter-label">Time Period</label>
         <div class="period-selector">
             {% for period in period_options %}
@@ -17,7 +17,7 @@
     </div>
 
     <!-- Limit Selector -->
-    <div class="filter-group">
+    <div class="filter-section">
         <label class="filter-label" for="limit-select">Show</label>
         <select id="limit-select" class="limit-dropdown"
                 hx-get="{% url 'core:top-artists' %}"
@@ -34,7 +34,7 @@
     </div>
 
     <!-- Export Actions -->
-    <div class="filter-group">
+    <div class="filter-section">
         <label class="filter-label">Export</label>
         <div class="export-actions">
             <a href="?period={{ selected_period }}&limit={{ selected_limit }}&export=csv"

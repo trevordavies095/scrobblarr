@@ -40,51 +40,9 @@
     justify-content: space-between;
 }
 
-.filter-group {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
 
-.filter-label {
-    font-weight: 500;
-    color: #e0e0e0;
-    font-size: 0.9rem;
-}
 
-.period-selector {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-}
 
-.period-btn {
-    padding: 0.5rem 1rem;
-    background-color: #333;
-    color: #e0e0e0;
-    border: 1px solid #444;
-    border-radius: 8px;
-    font-size: 0.9rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    text-decoration: none;
-    display: inline-flex;
-    align-items: center;
-}
-
-.period-btn:hover {
-    background-color: #444;
-    border-color: #bb86fc;
-    color: #bb86fc;
-}
-
-.period-btn.active {
-    background-color: #bb86fc;
-    border-color: #bb86fc;
-    color: #121212;
-    font-weight: 600;
-}
 
 .limit-selector {
     position: relative;
@@ -320,10 +278,6 @@
         padding: 1rem;
     }
 
-    .period-btn {
-        padding: 0.4rem 0.8rem;
-        font-size: 0.8rem;
-    }
 
     .export-actions {
         flex-direction: column;
@@ -350,7 +304,7 @@
 <div class="filters-section" id="filters-section">
     <div class="filters-row">
         <!-- Time Period Selector -->
-        <div class="filter-group">
+        <div class="filter-section">
             <label class="filter-label">Time Period</label>
             <div class="period-selector">
                 {% for period in period_options %}
@@ -367,13 +321,13 @@
         </div>
 
         <!-- Limit Selector -->
-        <div class="filter-group">
+        <div class="filter-section">
             <label class="filter-label" for="limit-select">Show</label>
-            <select id="limit-select" class="limit-dropdown"
-                    hx-get="{% url 'core:top-artists' %}"
+            <select id="limit-select" name="limit" class="limit-dropdown"
+                    hx-get="{% url 'core:top-artists' %}?partial=list"
                     hx-target="#artists-content"
                     hx-trigger="change"
-                    hx-include="[name='period']"
+                    hx-include="[name='period'], this"
                     hx-swap="outerHTML">
                 {% for limit in limit_options %}
                 <option value="{{ limit.value }}"{% if limit.active %} selected{% endif %}>
@@ -384,7 +338,7 @@
         </div>
 
         <!-- Export Actions -->
-        <div class="filter-group">
+        <div class="filter-section">
             <label class="filter-label">Export</label>
             <div class="export-actions">
                 <a href="?period={{ selected_period }}&limit={{ selected_limit }}&export=csv"
@@ -402,6 +356,7 @@
 
     <!-- Hidden inputs for htmx -->
     <input type="hidden" name="period" value="{{ selected_period }}">
+    <input type="hidden" name="limit" value="{{ selected_limit }}">
 </div>
 
 <!-- Artists Content -->
@@ -417,6 +372,11 @@ document.addEventListener('htmx:beforeRequest', function(evt) {
     const target = document.getElementById('artists-content');
     if (target) {
         target.style.position = 'relative';
+
+        // Remove any existing loading overlays first to prevent duplicates
+        const existingOverlays = target.querySelectorAll('.loading-overlay');
+        existingOverlays.forEach(overlay => overlay.remove());
+
         const overlay = document.createElement('div');
         overlay.className = 'loading-overlay';
         overlay.id = 'loading-overlay';
@@ -425,15 +385,13 @@ document.addEventListener('htmx:beforeRequest', function(evt) {
     }
 });
 
+// Combined afterRequest handler for cleanup and UI updates
 document.addEventListener('htmx:afterRequest', function(evt) {
-    const overlay = document.getElementById('loading-overlay');
-    if (overlay) {
-        overlay.remove();
-    }
-});
+    // Remove all loading overlays using querySelectorAll for robustness
+    const overlays = document.querySelectorAll('.loading-overlay');
+    overlays.forEach(overlay => overlay.remove());
 
-// Update limit selector and period buttons when URL changes
-document.addEventListener('htmx:afterRequest', function(evt) {
+    // Update limit selector and period buttons when URL changes
     const urlParams = new URLSearchParams(window.location.search);
 
     // Update the limit selector to match the current URL params

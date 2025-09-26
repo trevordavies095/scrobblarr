@@ -64,24 +64,6 @@ a:hover, a:focus {
     padding: 2rem 0;
 }
 
-/* Skip Link for Accessibility */
-.skip-link {
-    position: absolute;
-    top: -40px;
-    left: 6px;
-    background: #bb86fc;
-    color: #000;
-    padding: 8px;
-    text-decoration: none;
-    border-radius: 4px;
-    font-weight: 600;
-    z-index: 1000;
-    transition: top 0.2s ease;
-}
-
-.skip-link:focus {
-    top: 6px;
-}
 
 /* Header Styles */
 .header {
@@ -477,7 +459,9 @@ textarea:focus-visible {
 }
 
 /* High Contrast Mode Support */
-@media (prefers-contrast: high) {
+@media (prefers-contrast: high),
+       (-ms-high-contrast: active),
+       (forced-colors: active) {
     :root {
         --text-color: #ffffff;
         --bg-color: #000000;

@@ -38,12 +38,13 @@ class TopAlbumsSerializer(serializers.ModelSerializer):
     """
     album = serializers.CharField(source='name', read_only=True)
     artist = serializers.CharField(source='artist.name', read_only=True)
+    artist_id = serializers.IntegerField(source='artist.id', read_only=True)
     scrobble_count = serializers.IntegerField(read_only=True)
     mbid = serializers.CharField(read_only=True)
 
     class Meta:
         model = Album
-        fields = ['album', 'artist', 'scrobble_count', 'mbid']
+        fields = ['album', 'artist', 'artist_id', 'scrobble_count', 'mbid']
 
 
 class TopTracksSerializer(serializers.ModelSerializer):
@@ -53,7 +54,9 @@ class TopTracksSerializer(serializers.ModelSerializer):
     """
     track = serializers.CharField(source='name', read_only=True)
     artist = serializers.CharField(source='artist.name', read_only=True)
+    artist_id = serializers.IntegerField(source='artist.id', read_only=True)
     album = serializers.SerializerMethodField()
+    album_id = serializers.IntegerField(source='album.id', read_only=True)
     scrobble_count = serializers.IntegerField(read_only=True)
     mbid = serializers.CharField(read_only=True)
     duration = serializers.IntegerField(read_only=True)
@@ -61,7 +64,7 @@ class TopTracksSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Track
-        fields = ['track', 'artist', 'album', 'scrobble_count', 'mbid', 'duration', 'duration_formatted']
+        fields = ['track', 'artist', 'artist_id', 'album', 'album_id', 'scrobble_count', 'mbid', 'duration', 'duration_formatted']
 
     def get_album(self, obj):
         """Get album name, handling tracks with missing album information."""
@@ -225,7 +228,7 @@ class ArtistStory14Serializer(serializers.Serializer):
 
     def get_artist(self, obj):
         """Get basic artist information with scrobble stats."""
-        # Get first and last scrobble dates
+        # Get period-filtered scrobbles for total count
         scrobble_qs = Scrobble.objects.filter(track__artist=obj)
         if self.time_filter:
             if isinstance(self.time_filter, tuple):
@@ -239,15 +242,20 @@ class ArtistStory14Serializer(serializers.Serializer):
                 # Period-based filtering: single datetime
                 scrobble_qs = scrobble_qs.filter(timestamp__gte=self.time_filter)
 
-        first_scrobble = scrobble_qs.order_by('timestamp').first()
-        last_scrobble = scrobble_qs.order_by('-timestamp').first()
+        # Get all-time first and last scrobbles (regardless of time filter)
+        all_time_scrobbles = Scrobble.objects.filter(track__artist=obj)
+        first_scrobble_all_time = all_time_scrobbles.order_by('timestamp').first()
+        last_scrobble_all_time = all_time_scrobbles.order_by('-timestamp').first()
 
         return {
+            'id': obj.id,
             'name': obj.name,
             'mbid': obj.mbid,
             'total_scrobbles': scrobble_qs.count(),
-            'first_scrobble': first_scrobble.timestamp.isoformat() + 'Z' if first_scrobble else None,
-            'last_scrobble': last_scrobble.timestamp.isoformat() + 'Z' if last_scrobble else None
+            'first_scrobbled': first_scrobble_all_time.timestamp if first_scrobble_all_time else None,
+            'last_scrobbled': last_scrobble_all_time.timestamp if last_scrobble_all_time else None,
+            'first_scrobble': first_scrobble_all_time.timestamp.isoformat() + 'Z' if first_scrobble_all_time else None,
+            'last_scrobble': last_scrobble_all_time.timestamp.isoformat() + 'Z' if last_scrobble_all_time else None
         }
 
     def get_top_albums(self, obj):
@@ -274,7 +282,7 @@ class ArtistStory14Serializer(serializers.Serializer):
 
         return [
             {
-                'album': album.name,
+                'name': album.name,
                 'scrobble_count': album.scrobble_count
             }
             for album in albums_with_counts
@@ -304,8 +312,8 @@ class ArtistStory14Serializer(serializers.Serializer):
 
         return [
             {
-                'track': track.name,
-                'album': track.album.name if track.album else None,
+                'name': track.name,
+                'album_name': track.album.name if track.album else None,
                 'scrobble_count': track.scrobble_count
             }
             for track in tracks_with_counts

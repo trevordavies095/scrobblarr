@@ -33,7 +33,7 @@
                             </div>
                         </td>
                         <td>
-                            <a href="#" class="table-link artist-name">{{ track.artist_name }}</a>
+                            <a href="{% url 'core:artist-detail' track.artist_id %}" class="table-link artist-name">{{ track.artist_name }}</a>
                         </td>
                         <td class="table-meta hidden-mobile">
                             {% if track.album_name %}

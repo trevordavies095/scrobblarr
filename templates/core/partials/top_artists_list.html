@@ -7,48 +7,26 @@
                 <th class="rank-cell">Rank</th>
                 <th class="artist-cell">Artist</th>
                 <th class="scrobbles-cell">Scrobbles</th>
-                <th class="percentage-cell">% of Total</th>
             </tr>
         </thead>
         <tbody>
             {% for artist in artists %}
             <tr>
                 <td class="rank-cell">
-                    {% if artist.rank <= 3 %}
-                        {% if artist.rank == 1 %}🥇{% elif artist.rank == 2 %}🥈{% elif artist.rank == 3 %}🥉{% endif %}
-                    {% else %}
-                        {{ artist.rank }}
-                    {% endif %}
+                    {{ artist.rank }}
                 </td>
                 <td class="artist-cell">
-                    {% comment %}
-                    <!-- Future enhancement: Link to artist detail page -->
                     <a href="{% url 'core:artist-detail' artist.id %}" class="artist-name">
                         {{ artist.name }}
                     </a>
-                    {% endcomment %}
-                    <span class="artist-name">{{ artist.name }}</span>
-                    {% if artist.mbid %}
-                    <span class="artist-mbid" style="font-size: 0.8rem; color: #666; display: block;">
-                        MBID: {{ artist.mbid|slice:":8" }}...
-                    </span>
-                    {% endif %}
                 </td>
                 <td class="scrobbles-cell">
                     {{ artist.scrobble_count|floatformat:0 }}
                 </td>
-                <td class="percentage-cell">
-                    <div class="percentage-display">
-                        <span class="percentage-text">{{ artist.percentage|floatformat:1 }}%</span>
-                        <div class="progress-bar">
-                            <div class="progress-fill" style="width: {{ artist.progress_width }}%"></div>
-                        </div>
-                    </div>
-                </td>
             </tr>
             {% empty %}
             <tr>
-                <td colspan="4" class="empty-state">
+                <td colspan="3" class="empty-state">
                     <span class="empty-state-icon">🎵</span>
                     <h3>No Artists Found</h3>
                     <p>No artists found for the selected time period.</p>

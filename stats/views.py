@@ -331,6 +331,17 @@ class StatsViewSet(viewsets.ViewSet):
         }
         return formats.get(granularity, '%Y-%m')
 
+    def _get_date_trunc_function(self, granularity):
+        """Get Django date truncation function for safe SQL generation."""
+        from django.db.models.functions import TruncDate, TruncMonth, TruncYear
+
+        trunc_functions = {
+            'daily': TruncDate,
+            'monthly': TruncMonth,
+            'yearly': TruncYear
+        }
+        return trunc_functions.get(granularity, TruncMonth)
+
     def _build_period_info(self, period_value, granularity):
         """Build start_date and end_date for a chart period."""
         if granularity == 'daily':
@@ -388,9 +399,21 @@ class StatsViewSet(viewsets.ViewSet):
 
     def generate_artist_chart_data(self, request, artist, time_filter):
         """Generate chart data for a specific artist using existing chart infrastructure."""
+        import time
+        start_time = time.time()
+
         try:
+            self.logger.info(f"Starting chart data generation for artist {artist.name}", extra={
+                'artist_id': artist.id, 'time_filter': str(time_filter)
+            })
+
             period_display = self.get_period_display(request)
             granularity = self.get_granularity(request, time_filter)
+
+            self.logger.info(f"Chart parameters determined", extra={
+                'granularity': granularity, 'period_display': period_display,
+                'elapsed_ms': int((time.time() - start_time) * 1000)
+            })
 
             # Validate granularity
             valid_granularities = ['daily', 'monthly', 'yearly']
@@ -401,13 +424,31 @@ class StatsViewSet(viewsets.ViewSet):
                 )
                 granularity = 'monthly'  # Default fallback
 
-            # Get the appropriate date format for SQLite
-            date_format = self._get_date_trunc_format(granularity)
+            # Get Django date truncation function for safe SQL generation
+            trunc_function = self._get_date_trunc_function(granularity)
 
             # Build the query with artist filtering using optimized queryset
+            # Add default time limit to prevent extremely slow queries
+            from datetime import datetime, timedelta
+            from django.utils import timezone
+
             scrobbles_qs = QueryOptimizer.get_optimized_scrobbles_queryset().filter(
                 track__artist=artist
             ).only('id', 'timestamp')
+
+            # Apply performance limits - but respect explicit "All Time" requests
+            if not time_filter:
+                period_param = request.query_params.get('period', 'all')
+                if period_param != 'all':
+                    # Only apply 2-year limit for non-explicit requests (e.g., missing period param)
+                    two_years_ago = timezone.now() - timedelta(days=730)
+                    scrobbles_qs = scrobbles_qs.filter(timestamp__gte=two_years_ago)
+                    self.logger.info("Applied default 2-year limit for performance", extra={
+                        'cutoff_date': two_years_ago.strftime('%Y-%m-%d')
+                    })
+                else:
+                    # User explicitly requested "All Time" - show all historical data
+                    self.logger.info("All Time period requested - showing complete historical data")
 
             # Apply time filtering
             if time_filter:
@@ -422,30 +463,46 @@ class StatsViewSet(viewsets.ViewSet):
                     # Period-based filtering: single datetime
                     scrobbles_qs = scrobbles_qs.filter(timestamp__gte=time_filter)
 
-            # Aggregate by period (using same pattern as existing chart_data method)
+            # Aggregate by period using Django's safe date truncation functions
+            self.logger.info("Starting database query for artist chart data", extra={
+                'elapsed_ms': int((time.time() - start_time) * 1000)
+            })
+
             from django.db.models import Count
-            chart_data = list(scrobbles_qs.extra(
-                select={
-                    'period': f"strftime('{date_format}', timestamp)"
-                }
+            # Add performance limit - max 500 data points to prevent timeouts
+            chart_query = scrobbles_qs.annotate(
+                period=trunc_function('timestamp')
             ).values('period').annotate(
                 scrobble_count=Count('id')
-            ).order_by('period'))
+            ).order_by('period')
+
+            # Apply limit and execute query
+            chart_data = list(chart_query[:500])
+
+            self.logger.info(f"Database query completed for artist chart", extra={
+                'data_points': len(chart_data),
+                'elapsed_ms': int((time.time() - start_time) * 1000)
+            })
 
             # Limit data points to prevent performance issues (max 366 for daily)
             if len(chart_data) > 366:
                 chart_data = chart_data[-366:]
+                self.logger.info("Limited artist chart data to prevent performance issues", extra={
+                    'original_count': len(chart_data) + 366,
+                    'limited_count': 366
+                })
 
             # Format for Chart.js with proper date ranges
             formatted_data = []
             for item in chart_data:
-                period_str = item['period']
+                period_obj = item['period']
 
-                # Generate start and end dates based on granularity
+                # Convert datetime object to string and generate date ranges
                 if granularity == 'daily':
+                    period_str = period_obj.strftime('%Y-%m-%d') if hasattr(period_obj, 'strftime') else str(period_obj)
                     start_date = end_date = period_str
                 elif granularity == 'monthly':
-                    # Convert YYYY-MM to full date range
+                    period_str = period_obj.strftime('%Y-%m') if hasattr(period_obj, 'strftime') else str(period_obj)
                     year, month = period_str.split('-')
                     start_date = f"{year}-{month}-01"
                     # Get last day of month
@@ -453,6 +510,7 @@ class StatsViewSet(viewsets.ViewSet):
                     last_day = calendar.monthrange(int(year), int(month))[1]
                     end_date = f"{year}-{month}-{last_day:02d}"
                 else:  # yearly
+                    period_str = period_obj.strftime('%Y') if hasattr(period_obj, 'strftime') else str(period_obj)
                     start_date = f"{period_str}-01-01"
                     end_date = f"{period_str}-12-31"
 
@@ -499,20 +557,18 @@ class StatsViewSet(viewsets.ViewSet):
                 )
                 granularity = 'monthly'  # Default fallback
 
-            # Get the appropriate date format for SQLite
-            date_format = self._get_date_trunc_format(granularity)
+            # Get Django date truncation function for safe SQL generation
+            trunc_function = self._get_date_trunc_function(granularity)
 
             # Build the query with album filtering using optimized queryset
             scrobbles_qs = QueryOptimizer.get_optimized_scrobbles_queryset().filter(
                 track__album=album
             ).only('id', 'timestamp')
 
-            # Aggregate by period (using same pattern as existing chart_data method)
+            # Aggregate by period using Django's safe date truncation functions
             from django.db.models import Count
-            chart_data = list(scrobbles_qs.extra(
-                select={
-                    'period': f"strftime('{date_format}', timestamp)"
-                }
+            chart_data = list(scrobbles_qs.annotate(
+                period=trunc_function('timestamp')
             ).values('period').annotate(
                 scrobble_count=Count('id')
             ).order_by('period'))
@@ -524,13 +580,14 @@ class StatsViewSet(viewsets.ViewSet):
             # Format for Chart.js with proper date ranges
             formatted_data = []
             for item in chart_data:
-                period_str = item['period']
+                period_obj = item['period']
 
-                # Generate start and end dates based on granularity
+                # Convert datetime object to string and generate date ranges
                 if granularity == 'daily':
+                    period_str = period_obj.strftime('%Y-%m-%d') if hasattr(period_obj, 'strftime') else str(period_obj)
                     start_date = end_date = period_str
                 elif granularity == 'monthly':
-                    # Convert YYYY-MM to full date range
+                    period_str = period_obj.strftime('%Y-%m') if hasattr(period_obj, 'strftime') else str(period_obj)
                     year, month = period_str.split('-')
                     start_date = f"{year}-{month}-01"
                     # Get last day of month
@@ -538,6 +595,7 @@ class StatsViewSet(viewsets.ViewSet):
                     last_day = calendar.monthrange(int(year), int(month))[1]
                     end_date = f"{year}-{month}-{last_day:02d}"
                 else:  # yearly
+                    period_str = period_obj.strftime('%Y') if hasattr(period_obj, 'strftime') else str(period_obj)
                     start_date = f"{period_str}-01-01"
                     end_date = f"{period_str}-12-31"
 
@@ -857,9 +915,8 @@ class StatsViewSet(viewsets.ViewSet):
         from django.db.models import Count
         chart_data = base_queryset.extra(
             select={
-                'period': "strftime(%s, timestamp)"
-            },
-            select_params=[date_format]
+                'period': f"strftime('{date_format}', timestamp)"
+            }
         ).values('period').annotate(
             scrobble_count=Count('id')
         ).order_by('period')
@@ -907,25 +964,17 @@ class StatsViewSet(viewsets.ViewSet):
             # Support both ID and MBID lookup
             if self.is_valid_uuid(pk):
                 # MBID lookup
-                # Optimize with select_related and prefetch_related
+                # Lightweight query - don't prefetch all scrobbles for performance
                 artist = get_object_or_404(
-                    Artist.objects.prefetch_related(
-                        'albums__tracks__scrobbles',
-                        'tracks__scrobbles',
-                        'tracks__album'
-                    ),
+                    Artist.objects.select_related().only('id', 'name', 'mbid', 'url'),
                     mbid=pk
                 )
                 lookup_type = 'mbid'
             else:
                 # ID lookup
-                # Optimize with select_related and prefetch_related
+                # Lightweight query - don't prefetch all scrobbles for performance
                 artist = get_object_or_404(
-                    Artist.objects.prefetch_related(
-                        'albums__tracks__scrobbles',
-                        'tracks__scrobbles',
-                        'tracks__album'
-                    ),
+                    Artist.objects.select_related().only('id', 'name', 'mbid', 'url'),
                     pk=pk
                 )
                 lookup_type = 'id'

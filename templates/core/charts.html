@@ -22,10 +22,10 @@
                 <!-- Time Period Selector -->
                 <div class="filter-section">
                     <label class="filter-label">Time Period:</label>
-                    <div class="time-period-selector">
+                    <div class="period-selector">
                         {% for option in period_options %}
                         <a href="{% url 'core:charts' %}?period={{ option.value }}&granularity={{ selected_granularity }}{% if custom_date_from %}&date_from={{ custom_date_from }}{% endif %}{% if custom_date_to %}&date_to={{ custom_date_to }}{% endif %}"
-                           class="time-period-option{% if option.active %} active{% endif %}"
+                           class="period-btn{% if option.active %} active{% endif %}"
                            hx-get="{% url 'core:charts' %}?partial=chart&period={{ option.value }}&granularity={{ selected_granularity }}{% if custom_date_from %}&date_from={{ custom_date_from }}{% endif %}{% if custom_date_to %}&date_to={{ custom_date_to }}{% endif %}"
                            hx-target="#chart-container">
                             {{ option.label }}
@@ -66,7 +66,7 @@
                     <div class="granularity-selector">
                         {% for option in granularity_options %}
                         <a href="{% url 'core:charts' %}?period={{ selected_period }}&granularity={{ option.value }}{% if custom_date_from %}&date_from={{ custom_date_from }}{% endif %}{% if custom_date_to %}&date_to={{ custom_date_to }}{% endif %}"
-                           class="time-period-option{% if option.active %} active{% endif %}"
+                           class="period-btn{% if option.active %} active{% endif %}"
                            hx-get="{% url 'core:charts' %}?partial=chart&period={{ selected_period }}&granularity={{ option.value }}{% if custom_date_from %}&date_from={{ custom_date_from }}{% endif %}{% if custom_date_to %}&date_to={{ custom_date_to }}{% endif %}"
                            hx-target="#chart-container">
                             {{ option.label }}
@@ -107,75 +107,6 @@
         {% include "core/partials/charts_container.html" %}
     </div>
 
-    <!-- Chart Statistics -->
-    {% if chart_data_dict.success and chart_stats.total_scrobbles > 0 %}
-    <div class="chart-statistics">
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-card-header">
-                    <div class="stat-icon">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/>
-                        </svg>
-                    </div>
-                    <div class="stat-content">
-                        <div class="stat-value">{{ chart_stats.total_scrobbles|floatformat:0 }}</div>
-                        <div class="stat-label">Total Scrobbles</div>
-                        <div class="stat-subtitle">{{ chart_stats.period_display }}</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="stat-card">
-                <div class="stat-card-header">
-                    <div class="stat-icon">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M18 20V10"/>
-                            <path d="M12 20V4"/>
-                            <path d="M6 20v-6"/>
-                        </svg>
-                    </div>
-                    <div class="stat-content">
-                        <div class="stat-value">{{ chart_stats.max_scrobbles|floatformat:0 }}</div>
-                        <div class="stat-label">Peak {{ chart_stats.granularity }}</div>
-                        <div class="stat-subtitle">Highest single period</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="stat-card">
-                <div class="stat-card-header">
-                    <div class="stat-icon">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-                        </svg>
-                    </div>
-                    <div class="stat-content">
-                        <div class="stat-value">{{ chart_stats.avg_scrobbles|floatformat:1 }}</div>
-                        <div class="stat-label">Average per {{ chart_stats.granularity }}</div>
-                        <div class="stat-subtitle">Across {{ chart_stats.data_points }} periods</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="stat-card">
-                <div class="stat-card-header">
-                    <div class="stat-icon">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                            <rect x="9" y="9" width="6" height="6"/>
-                        </svg>
-                    </div>
-                    <div class="stat-content">
-                        <div class="stat-value">{{ chart_stats.data_points|floatformat:0 }}</div>
-                        <div class="stat-label">Data Points</div>
-                        <div class="stat-subtitle">{{ chart_stats.granularity }} periods</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    {% endif %}
 </div>
 
 <!-- Chart Data for JavaScript -->
@@ -235,17 +166,21 @@
 
 .filter-section {
     display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
+    align-items: center;
+    gap: 1rem;
 }
 
 .filter-label {
-    font-size: 0.875rem;
+    font-size: 0.9rem;
     font-weight: 600;
     color: #bb86fc;
-    margin: 0;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    line-height: 1.2;
+    display: flex;
+    align-items: center;
+    min-height: 2.5rem;
+    margin: 0;
 }
 
 .date-range-inputs {
@@ -320,9 +255,6 @@
     width: 100%;
 }
 
-.chart-statistics {
-    margin-top: 2rem;
-}
 
 .chart-error {
     text-align: center;
@@ -396,7 +328,7 @@
     }
 
     .granularity-selector,
-    .time-period-selector {
+    .period-selector {
         justify-content: center;
     }
 
@@ -423,13 +355,13 @@
         gap: 0.5rem;
     }
 
-    .time-period-selector,
+    .period-selector,
     .granularity-selector {
         flex-direction: column;
         gap: 0.5rem;
     }
 
-    .time-period-option {
+    .period-btn {
         text-align: center;
     }
 

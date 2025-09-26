@@ -8,18 +8,13 @@
                 <th class="album-cell">Album</th>
                 <th class="artist-cell">Artist</th>
                 <th class="scrobbles-cell">Scrobbles</th>
-                <th class="percentage-cell">% of Total</th>
             </tr>
         </thead>
         <tbody>
             {% for album in albums %}
             <tr>
                 <td class="rank-cell">
-                    {% if album.rank <= 3 %}
-                        {% if album.rank == 1 %}🥇{% elif album.rank == 2 %}🥈{% elif album.rank == 3 %}🥉{% endif %}
-                    {% else %}
-                        {{ album.rank }}
-                    {% endif %}
+                    {{ album.rank }}
                 </td>
                 <td class="album-cell">
                     {% comment %}
@@ -30,36 +25,19 @@
                     {% comment %}
                     </a>
                     {% endcomment %}
-                    {% if album.mbid %}
-                    <span class="album-mbid" style="font-size: 0.8rem; color: #666; display: block;">
-                        MBID: {{ album.mbid|slice:":8" }}...
-                    </span>
-                    {% endif %}
                 </td>
                 <td class="artist-cell">
-                    {% comment %}
-                    <!-- Future enhancement: Link to artist detail page -->
                     <a href="{% url 'core:artist-detail' album.artist_id %}" class="artist-name">
                         {{ album.artist_name }}
                     </a>
-                    {% endcomment %}
-                    <span class="artist-name">{{ album.artist_name }}</span>
                 </td>
                 <td class="scrobbles-cell">
                     {{ album.scrobble_count|floatformat:0 }}
                 </td>
-                <td class="percentage-cell">
-                    <div class="percentage-display">
-                        <span class="percentage-text">{{ album.percentage|floatformat:1 }}%</span>
-                        <div class="progress-bar">
-                            <div class="progress-fill" style="width: {{ album.progress_width }}%"></div>
-                        </div>
-                    </div>
-                </td>
             </tr>
             {% empty %}
             <tr>
-                <td colspan="5" class="empty-state">
+                <td colspan="4" class="empty-state">
                     <span class="empty-state-icon">💿</span>
                     <h3>No Albums Found</h3>
                     <p>No albums found for the selected time period.</p>

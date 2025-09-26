@@ -1,0 +1,44 @@
+<!-- Time Period Selector -->
+<div class="artist-filters">
+    <div class="filter-section">
+        <label class="filter-label">Time Period:</label>
+        <div class="period-selector">
+            {% for option in period_options %}
+            <a href="{% url 'core:artist-detail' artist_info.id %}?period={{ option.value }}&tab={{ selected_tab }}"
+               class="period-btn{% if option.active %} active{% endif %}"
+               hx-get="{% url 'core:artist-detail' artist_info.id %}?period={{ option.value }}&tab={{ selected_tab }}&partial=full"
+               hx-target="#artist-dynamic-content"
+               hx-push-url="false">
+                {{ option.label }}
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="filter-summary">
+        <span class="summary-text">{{ period_display }}</span>
+    </div>
+</div>
+
+<!-- Tab Content -->
+<div id="artist-content" class="artist-content">
+{% if selected_tab == 'overview' %}
+    <!-- Overview Tab Content -->
+    <div class="overview-content">
+        <!-- Top Albums Section (First) -->
+        <div class="content-section albums-section">
+            <h3 class="section-title">Albums</h3>
+            {% include "core/partials/artist_albums_list.html" %}
+        </div>
+
+        <!-- Top Tracks Section (Second) -->
+        <div class="content-section tracks-section">
+            <h3 class="section-title">Tracks</h3>
+            {% include "core/partials/artist_tracks_list.html" %}
+        </div>
+    </div>
+
+{% elif selected_tab == 'charts' %}
+    {% include "core/partials/artist_chart_container.html" %}
+
+{% endif %}
+</div>

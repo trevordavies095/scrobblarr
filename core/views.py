@@ -75,8 +75,11 @@ def index(request):
         for scrobble in recent_tracks_query:
             track_data = {
                 'track_name': scrobble.track.name,
+                'track_id': scrobble.track.id,
                 'artist_name': scrobble.track.artist.name,
+                'artist_id': scrobble.track.artist.id,
                 'album_name': scrobble.track.album.name if scrobble.track.album else None,
+                'album_id': scrobble.track.album.id if scrobble.track.album else None,
                 'timestamp': scrobble.timestamp,
                 'relative_time': _format_relative_time(scrobble.timestamp),
                 'duration': scrobble.track.get_duration_formatted() if scrobble.track.duration else None,
@@ -144,6 +147,7 @@ def index(request):
             'recent_tracks': recent_tracks_formatted,
             'sync_status': sync_status,
             'dashboard_data': dashboard_data,  # Full data for advanced components
+            'breadcrumbs': [],  # Homepage doesn't need breadcrumbs
         }
 
         # Log performance
@@ -172,6 +176,7 @@ def index(request):
                 'error_message': 'Failed to load dashboard data'
             },
             'dashboard_data': None,
+            'breadcrumbs': [],  # Homepage doesn't need breadcrumbs
         }
 
     # Handle partial template requests for htmx updates
@@ -1333,3 +1338,190 @@ def liveness_check(request):
         'status': 'alive',
         'timestamp': timezone.now().isoformat()
     })
+
+
+def artist_detail(request, pk):
+    """
+    Artist detail page with comprehensive artist information.
+    Implements Story 26: Artist Detail Page requirements.
+    """
+    import requests
+    import json
+
+    logger.info("Loading artist detail page", extra={
+        'artist_id': pk,
+        'user_agent': request.META.get('HTTP_USER_AGENT', ''),
+        'remote_addr': request.META.get('REMOTE_ADDR')
+    })
+
+    start_time = timezone.now()
+
+    # Get query parameters for filtering
+    time_period = request.GET.get('period', 'all').strip().lower()
+    tab = request.GET.get('tab', 'overview').strip().lower()
+
+    # Validate time period parameter
+    valid_periods = ['7d', '30d', '90d', '180d', '365d', 'all']
+    if time_period not in valid_periods:
+        time_period = 'all'
+
+    # Validate tab parameter
+    valid_tabs = ['overview', 'charts']
+    if tab not in valid_tabs:
+        tab = 'overview'
+
+    try:
+        # Build API request to artist detail endpoint
+        api_url = f"http://127.0.0.1:8000/api/artists/{pk}/"
+        api_params = {}
+
+        # Add time period filtering if not all time
+        if time_period != 'all':
+            api_params['period'] = time_period
+
+        # Make API request with timeout
+        api_response = requests.get(api_url, params=api_params, timeout=15)
+
+        if api_response.status_code == 200:
+            api_data = api_response.json()
+
+            # Extract artist data from API response
+            artist_info = api_data.get('artist', {})
+            top_albums = api_data.get('top_albums', [])
+            top_tracks = api_data.get('top_tracks', [])
+            chart_data_raw = api_data.get('chart_data', {})
+
+            # Parse datetime strings back to datetime objects for template
+            if artist_info.get('first_scrobbled'):
+                try:
+                    # Parse ISO datetime string back to datetime object
+                    first_str = artist_info['first_scrobbled'].replace('Z', '+00:00')
+                    artist_info['first_scrobbled'] = datetime.fromisoformat(first_str)
+                except (ValueError, AttributeError):
+                    artist_info['first_scrobbled'] = None
+
+            if artist_info.get('last_scrobbled'):
+                try:
+                    # Parse ISO datetime string back to datetime object
+                    last_str = artist_info['last_scrobbled'].replace('Z', '+00:00')
+                    artist_info['last_scrobbled'] = datetime.fromisoformat(last_str)
+                except (ValueError, AttributeError):
+                    artist_info['last_scrobbled'] = None
+
+            # Transform chart data from API format to Chart.js format
+            chart_data_array = chart_data_raw.get('data', [])
+            chart_labels = [item['period'] for item in chart_data_array]
+            chart_values = [item['scrobble_count'] for item in chart_data_array]
+
+            # Calculate time period display text
+            period_display = time_period.replace('d', ' days').replace('all', 'All Time').title()
+
+            artist_success = True
+            artist_error = None
+
+        elif api_response.status_code == 404:
+            # Artist not found
+            logger.warning(f"Artist not found: {pk}")
+            artist_info = {}
+            top_albums = []
+            top_tracks = []
+            chart_labels = []
+            chart_values = []
+            period_display = 'All Time'
+            artist_success = False
+            artist_error = "Artist not found"
+
+        else:
+            # API error fallback
+            logger.error(f"Artist API error: {api_response.status_code}")
+            artist_info = {}
+            top_albums = []
+            top_tracks = []
+            chart_labels = []
+            chart_values = []
+            period_display = 'All Time'
+            artist_success = False
+            artist_error = f"Failed to load artist data (HTTP {api_response.status_code})"
+
+    except requests.RequestException as e:
+        logger.error("Failed to fetch artist data from API", exc_info=True)
+        # Fallback to empty state
+        artist_info = {}
+        top_albums = []
+        top_tracks = []
+        chart_labels = []
+        chart_values = []
+        period_display = 'All Time'
+        artist_success = False
+        artist_error = "Unable to connect to artist data service"
+
+    except Exception as e:
+        logger.error("Error loading artist detail page", exc_info=True)
+        # Fallback to empty state
+        artist_info = {}
+        top_albums = []
+        top_tracks = []
+        chart_labels = []
+        chart_values = []
+        period_display = 'All Time'
+        artist_success = False
+        artist_error = "An unexpected error occurred while loading artist data"
+
+    # Build chart data for JavaScript
+    chart_data_dict = {
+        'labels': chart_labels,
+        'values': chart_values,
+        'success': artist_success and len(chart_labels) > 0,
+        'error': artist_error if not artist_success else None,
+    }
+
+    # Build breadcrumb navigation
+    breadcrumbs = [
+        {'title': 'Home', 'url': '/'},
+        {'title': 'Artists', 'url': '/top-artists/'},
+    ]
+
+    if artist_success and artist_info.get('name'):
+        breadcrumbs.append({'title': artist_info['name'], 'url': None})
+    else:
+        breadcrumbs.append({'title': 'Artist Detail', 'url': None})
+
+    context = {
+        'artist_info': artist_info,
+        'artist_success': artist_success,
+        'artist_error': artist_error,
+        'top_albums': top_albums[:10],  # Limit to top 10
+        'top_tracks': top_tracks[:10],  # Limit to top 10
+        'chart_data': json.dumps(chart_data_dict),  # JSON string for JavaScript
+        'chart_data_dict': chart_data_dict,  # Python dict for template conditionals
+        'selected_period': time_period,
+        'selected_tab': tab,
+        'breadcrumbs': breadcrumbs,
+        'page_title': artist_info.get('name', 'Artist Detail'),
+        'period_options': [
+            {'value': '7d', 'label': '7 days', 'active': time_period == '7d'},
+            {'value': '30d', 'label': '30 days', 'active': time_period == '30d'},
+            {'value': '90d', 'label': '90 days', 'active': time_period == '90d'},
+            {'value': '180d', 'label': '180 days', 'active': time_period == '180d'},
+            {'value': '365d', 'label': '1 year', 'active': time_period == '365d'},
+            {'value': 'all', 'label': 'All Time', 'active': time_period == 'all'},
+        ],
+        'tab_options': [
+            {'value': 'overview', 'label': 'Overview', 'active': tab == 'overview'},
+            {'value': 'charts', 'label': 'Charts', 'active': tab == 'charts'},
+        ],
+        'period_display': period_display,
+    }
+
+    # Handle partial template requests for htmx updates
+    partial = request.GET.get('partial')
+    if partial:
+        if partial == 'overview':
+            return render(request, 'core/partials/artist_overview_content.html', context)
+        elif partial == 'charts':
+            return render(request, 'core/partials/artist_chart_container.html', context)
+        elif partial == 'full':
+            # Return the full dynamic content area (time period selector + tab content)
+            return render(request, 'core/partials/artist_dynamic_content.html', context)
+
+    return render(request, 'core/artist_detail.html', context)

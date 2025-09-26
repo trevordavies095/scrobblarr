@@ -5,78 +5,9 @@
 {% block title %}Home - Scrobblarr{% endblock %}
 
 {% block content %}
-<div class="home-hero">
-    <div class="hero-content">
-        <h1 class="hero-title">Welcome to Scrobblarr</h1>
-        <p class="hero-subtitle">Your music listening history, consolidated and analyzed</p>
-
-        {% if stats.last_scrobble_date %}
-        <div class="hero-stats">
-            <div class="hero-stat">
-                <span class="hero-stat-value">{{ stats.current_streak|default:0 }}</span>
-                <span class="hero-stat-label">day{% if stats.current_streak != 1 %}s{% endif %} streak</span>
-            </div>
-            {% if stats.estimated_listening_days %}
-            <div class="hero-stat">
-                <span class="hero-stat-value">{{ stats.estimated_listening_days|floatformat:0 }}</span>
-                <span class="hero-stat-label">days of music</span>
-            </div>
-            {% endif %}
-        </div>
-        {% endif %}
-    </div>
-</div>
-
-<!-- Main Statistics Grid -->
-<div class="stats-grid" id="dashboard-stats" hx-get="{% url 'core:index' %}?partial=stats" hx-trigger="every 30s" hx-select="#dashboard-stats" hx-swap="outerHTML">
-    {% stat_card "Total Scrobbles" stats.total_scrobbles subtitle="All time" change=stats.scrobble_change %}
-
-    {% stat_card "Unique Artists" stats.unique_artists subtitle=stats.top_artist.name|default:"No data" %}
-
-    {% stat_card "Unique Albums" stats.unique_albums subtitle=stats.top_album.name|default:"No data" %}
-
-    {% stat_card "Unique Tracks" stats.unique_tracks subtitle=stats.top_track.name|default:"No data" %}
-</div>
-
-<!-- Enhanced Statistics Row -->
-{% if stats.scrobbles_last_7_days > 0 or stats.estimated_listening_hours > 0 %}
-<div class="secondary-stats-grid">
-    {% if stats.scrobbles_last_7_days > 0 %}
-    <div class="stat-card stat-card-secondary">
-        <div class="stat-value">{{ stats.daily_average_7_days|floatformat:1 }}</div>
-        <div class="stat-label">Daily Average</div>
-        <div class="stat-subtitle">Last 7 days</div>
-    </div>
-    {% endif %}
-
-    {% if stats.estimated_listening_hours > 0 %}
-    <div class="stat-card stat-card-secondary">
-        <div class="stat-value">{{ stats.estimated_listening_hours|floatformat:0 }}h</div>
-        <div class="stat-label">Total Listening Time</div>
-        <div class="stat-subtitle">Estimated</div>
-    </div>
-    {% endif %}
-
-    {% if stats.longest_streak > 0 %}
-    <div class="stat-card stat-card-secondary">
-        <div class="stat-value">{{ stats.longest_streak }}</div>
-        <div class="stat-label">Longest Streak</div>
-        <div class="stat-subtitle">Days in a row</div>
-    </div>
-    {% endif %}
-
-    {% if stats.average_track_duration %}
-    <div class="stat-card stat-card-secondary">
-        <div class="stat-value">{{ stats.average_track_duration|floatformat:1 }}m</div>
-        <div class="stat-label">Average Track</div>
-        <div class="stat-subtitle">Duration</div>
-    </div>
-    {% endif %}
-</div>
-{% endif %}
 
 {% if recent_tracks %}
-<section class="recent-section" id="recent-tracks" hx-get="{% url 'core:index' %}?partial=recent" hx-trigger="every 60s" hx-select="#recent-tracks" hx-swap="outerHTML">
+<section class="recent-section" id="recent-tracks" hx-get="{% url 'core:index' %}?partial=recent" hx-trigger="every 120s" hx-select="#recent-tracks" hx-swap="outerHTML">
     <div class="section-header">
         <h2 class="section-title">Recent Tracks</h2>
         <div class="section-actions">
@@ -108,7 +39,7 @@
                             </div>
                         </td>
                         <td>
-                            <a href="#" class="table-link artist-name">{{ track.artist_name }}</a>
+                            <a href="{% url 'core:artist-detail' track.artist_id %}" class="table-link artist-name">{{ track.artist_name }}</a>
                         </td>
                         <td class="table-meta hidden-mobile">
                             {% if track.album_name %}
@@ -155,6 +86,55 @@
     </div>
 </section>
 {% endif %}
+
+<!-- Main Statistics Grid -->
+<div class="stats-grid" id="dashboard-stats" hx-get="{% url 'core:index' %}?partial=stats" hx-trigger="every 60s" hx-select="#dashboard-stats" hx-swap="outerHTML">
+    {% stat_card "Total Scrobbles" stats.total_scrobbles subtitle="All time" change=stats.scrobble_change %}
+
+    {% stat_card "Unique Artists" stats.unique_artists subtitle=stats.top_artist.name|default:"No data" %}
+
+    {% stat_card "Unique Albums" stats.unique_albums subtitle=stats.top_album.name|default:"No data" %}
+
+    {% stat_card "Unique Tracks" stats.unique_tracks subtitle=stats.top_track.name|default:"No data" %}
+</div>
+
+<!-- Enhanced Statistics Row -->
+{% if stats.scrobbles_last_7_days > 0 or stats.estimated_listening_hours > 0 %}
+<div class="secondary-stats-grid">
+    {% if stats.scrobbles_last_7_days > 0 %}
+    <div class="stat-card stat-card-secondary">
+        <div class="stat-value">{{ stats.daily_average_7_days|floatformat:1 }}</div>
+        <div class="stat-label">Daily Average</div>
+        <div class="stat-subtitle">Last 7 days</div>
+    </div>
+    {% endif %}
+
+    {% if stats.estimated_listening_hours > 0 %}
+    <div class="stat-card stat-card-secondary">
+        <div class="stat-value">{{ stats.estimated_listening_hours|floatformat:0 }}h</div>
+        <div class="stat-label">Total Listening Time</div>
+        <div class="stat-subtitle">Estimated</div>
+    </div>
+    {% endif %}
+
+    {% if stats.longest_streak > 0 %}
+    <div class="stat-card stat-card-secondary">
+        <div class="stat-value">{{ stats.longest_streak }}</div>
+        <div class="stat-label">Longest Streak</div>
+        <div class="stat-subtitle">Days in a row</div>
+    </div>
+    {% endif %}
+
+    {% if stats.average_track_duration %}
+    <div class="stat-card stat-card-secondary">
+        <div class="stat-value">{{ stats.average_track_duration|floatformat:1 }}m</div>
+        <div class="stat-label">Average Track</div>
+        <div class="stat-subtitle">Duration</div>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
 
 <section class="quick-nav">
     <div class="section-header">
@@ -221,7 +201,7 @@
 
 <!-- Sync Status and System Information -->
 {% if sync_status %}
-<div class="sync-info" id="sync-status" hx-get="{% url 'core:index' %}?partial=sync" hx-trigger="every 10s" hx-select="#sync-status" hx-swap="outerHTML">
+<div class="sync-info" id="sync-status" hx-get="{% url 'core:index' %}?partial=sync" hx-trigger="every 30s" hx-select="#sync-status" hx-swap="outerHTML">
     <div class="sync-status sync-status-{{ sync_status.status }}">
         <div class="sync-indicator">
             {% if sync_status.status == 'syncing' %}
@@ -305,59 +285,6 @@
 
 <style>
 /* Enhanced Home page styles for Story 20 */
-.home-hero {
-    text-align: center;
-    padding: 3rem 0;
-    margin-bottom: 3rem;
-    background: linear-gradient(135deg, rgba(187, 134, 252, 0.1), rgba(98, 0, 238, 0.1));
-    border-radius: 16px;
-    border: 1px solid rgba(187, 134, 252, 0.2);
-    position: relative;
-    overflow: hidden;
-}
-
-.hero-title {
-    font-size: 3rem;
-    font-weight: 700;
-    margin-bottom: 1rem;
-    background: linear-gradient(135deg, #bb86fc, #6200ee);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-
-.hero-subtitle {
-    font-size: 1.25rem;
-    color: #999;
-    margin: 0 0 1.5rem 0;
-    font-weight: 400;
-}
-
-.hero-stats {
-    display: flex;
-    justify-content: center;
-    gap: 2rem;
-    margin-top: 1.5rem;
-}
-
-.hero-stat {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-
-.hero-stat-value {
-    font-size: 2rem;
-    font-weight: 700;
-    color: #bb86fc;
-    line-height: 1;
-}
-
-.hero-stat-label {
-    font-size: 0.9rem;
-    color: #666;
-    margin-top: 0.25rem;
-}
 
 /* Secondary stats grid */
 .secondary-stats-grid {
@@ -648,19 +575,6 @@
 
 /* Responsive enhancements for mobile */
 @media (max-width: 768px) {
-    .hero-stats {
-        flex-direction: column;
-        gap: 1rem;
-    }
-
-    .hero-stat {
-        flex-direction: row;
-        gap: 0.5rem;
-    }
-
-    .hero-stat-value {
-        font-size: 1.5rem;
-    }
 
     .secondary-stats-grid {
         grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -768,13 +682,6 @@
 
 /* Mobile responsive */
 @media (max-width: 768px) {
-    .hero-title {
-        font-size: 2.5rem;
-    }
-
-    .hero-subtitle {
-        font-size: 1.125rem;
-    }
 
     .section-header {
         flex-direction: column;
@@ -793,13 +700,6 @@
 }
 
 @media (max-width: 480px) {
-    .hero-title {
-        font-size: 2rem;
-    }
-
-    .home-hero {
-        padding: 2rem 0;
-    }
 
     .quick-nav-icon {
         width: 40px;

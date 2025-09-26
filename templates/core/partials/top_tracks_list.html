@@ -9,18 +9,13 @@
                 <th class="artist-cell">Artist</th>
                 <th class="album-cell">Album</th>
                 <th class="scrobbles-cell">Scrobbles</th>
-                <th class="percentage-cell">% of Total</th>
             </tr>
         </thead>
         <tbody>
             {% for track in tracks %}
             <tr>
                 <td class="rank-cell">
-                    {% if track.rank <= 3 %}
-                        {% if track.rank == 1 %}🥇{% elif track.rank == 2 %}🥈{% elif track.rank == 3 %}🥉{% endif %}
-                    {% else %}
-                        {{ track.rank }}
-                    {% endif %}
+                    {{ track.rank }}
                 </td>
                 <td class="track-cell">
                     {% comment %}
@@ -31,20 +26,11 @@
                     {% comment %}
                     </a>
                     {% endcomment %}
-                    {% if track.mbid %}
-                    <span class="track-mbid" style="font-size: 0.8rem; color: #666; display: block;">
-                        MBID: {{ track.mbid|slice:":8" }}...
-                    </span>
-                    {% endif %}
                 </td>
                 <td class="artist-cell">
-                    {% comment %}
-                    <!-- Future enhancement: Link to artist detail page -->
                     <a href="{% url 'core:artist-detail' track.artist_id %}" class="artist-name">
                         {{ track.artist_name }}
                     </a>
-                    {% endcomment %}
-                    <span class="artist-name">{{ track.artist_name }}</span>
                 </td>
                 <td class="album-cell">
                     {% comment %}
@@ -58,18 +44,10 @@
                 <td class="scrobbles-cell">
                     {{ track.scrobble_count|floatformat:0 }}
                 </td>
-                <td class="percentage-cell">
-                    <div class="percentage-display">
-                        <span class="percentage-text">{{ track.percentage|floatformat:1 }}%</span>
-                        <div class="progress-bar">
-                            <div class="progress-fill" style="width: {{ track.progress_width }}%"></div>
-                        </div>
-                    </div>
-                </td>
             </tr>
             {% empty %}
             <tr>
-                <td colspan="6" class="empty-state">
+                <td colspan="5" class="empty-state">
                     <span class="empty-state-icon">🎵</span>
                     <h3>No Tracks Found</h3>
                     <p>No tracks found for the selected time period.</p>

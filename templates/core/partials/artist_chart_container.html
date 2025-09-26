@@ -1,0 +1,178 @@
+{% if chart_data_dict.success %}
+    {% if chart_data_dict.labels and chart_data_dict.values %}
+        <!-- Chart Display -->
+        <div class="artist-chart-container">
+            <div class="chart-title">
+                <h3>{{ artist_info.name }} - Scrobbles Over Time</h3>
+                <p class="chart-subtitle">{{ period_display }} listening activity</p>
+            </div>
+            <div class="chart-wrapper">
+                <canvas id="artistChart"></canvas>
+            </div>
+        </div>
+    {% else %}
+        <!-- Empty Chart State -->
+        <div class="chart-empty-state">
+            <div class="chart-empty-state-icon">📊</div>
+            <h3>No Chart Data Available</h3>
+            <p>No scrobble activity found for {{ artist_info.name }} in the selected time period. Try selecting a different time range.</p>
+        </div>
+    {% endif %}
+{% else %}
+    <!-- Error State -->
+    <div class="chart-error">
+        <div class="chart-error-icon">⚠️</div>
+        <h3>Unable to Load Chart</h3>
+        <p>{{ chart_data_dict.error|default:"There was a problem loading the chart data for this artist. Please try again later." }}</p>
+        <div style="margin-top: 1rem;">
+            <button onclick="window.location.reload()" class="btn btn-secondary btn-sm">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="23,4 23,10 17,10"/>
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                </svg>
+                Retry
+            </button>
+        </div>
+    </div>
+{% endif %}
+
+<!-- Embedded script data for Chart.js (updated with each htmx request) -->
+<script type="application/json" id="artist-chart-data">
+{{ chart_data|safe }}
+</script>
+
+<style>
+.artist-chart-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.chart-title {
+    text-align: center;
+    margin-bottom: 1rem;
+}
+
+.chart-title h3 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #e0e0e0;
+    margin: 0 0 0.5rem 0;
+}
+
+.chart-subtitle {
+    color: #999;
+    margin: 0;
+    font-size: 1rem;
+}
+
+.chart-wrapper {
+    position: relative;
+    height: 400px;
+    width: 100%;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+
+.chart-empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: #999;
+}
+
+.chart-empty-state-icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+    display: block;
+}
+
+.chart-empty-state h3 {
+    color: #e0e0e0;
+    margin: 0 0 1rem 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.chart-empty-state p {
+    margin: 0;
+    line-height: 1.6;
+}
+
+.chart-error {
+    text-align: center;
+    padding: 3rem 2rem;
+    color: #ff6b6b;
+    background: rgba(244, 67, 54, 0.05);
+    border: 1px solid rgba(244, 67, 54, 0.2);
+    border-radius: 8px;
+}
+
+.chart-error-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.7;
+    display: block;
+}
+
+.chart-error h3 {
+    color: #ff6b6b;
+    margin: 0 0 1rem 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.chart-error p {
+    margin: 0 0 1rem 0;
+    line-height: 1.6;
+}
+
+/* Mobile responsive design */
+@media (max-width: 768px) {
+    .chart-wrapper {
+        height: 300px;
+        padding: 1rem;
+    }
+
+    .chart-title h3 {
+        font-size: 1.25rem;
+    }
+
+    .chart-subtitle {
+        font-size: 0.9rem;
+    }
+
+}
+
+@media (max-width: 480px) {
+    .artist-chart-container {
+        gap: 1.5rem;
+    }
+
+    .chart-wrapper {
+        height: 250px;
+        padding: 0.75rem;
+    }
+
+    .chart-empty-state,
+    .chart-error {
+        padding: 2rem 1rem;
+    }
+
+    .chart-empty-state-icon,
+    .chart-error-icon {
+        font-size: 3rem;
+    }
+
+    .chart-empty-state h3,
+    .chart-error h3 {
+        font-size: 1.25rem;
+    }
+}
+</style>

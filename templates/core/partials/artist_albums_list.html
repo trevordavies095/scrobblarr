@@ -1,0 +1,141 @@
+{% if top_albums %}
+    <div class="albums-compact-list">
+        {% for album in top_albums %}
+        <div class="album-compact-row">
+            <div class="album-compact-name">
+                <a href="#" class="album-link">{{ album.name }}</a>
+            </div>
+            <div class="album-compact-count">
+                {{ album.scrobble_count }} scrobbles
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">💿</div>
+        <h3>No Albums Found</h3>
+        <p>No albums found for this artist in the selected time period. Try selecting a different time range.</p>
+    </div>
+{% endif %}
+
+<style>
+.albums-compact-list {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.album-compact-row {
+    display: flex;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    transition: background 0.2s ease;
+}
+
+.album-compact-row:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.album-compact-row:last-child {
+    border-bottom: none;
+}
+
+.album-compact-name {
+    flex: 1;
+    display: flex;
+    align-items: center;
+}
+
+.album-link {
+    color: #e0e0e0;
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 1rem;
+    line-height: 1.4;
+    transition: color 0.2s ease;
+}
+
+.album-link:hover {
+    color: #bb86fc;
+}
+
+.album-compact-count {
+    color: #999;
+    font-size: 0.9rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: #999;
+}
+
+.empty-state-icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+    display: block;
+}
+
+.empty-state h3 {
+    color: #e0e0e0;
+    margin: 0 0 1rem 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.empty-state p {
+    margin: 0;
+    line-height: 1.6;
+}
+
+/* Mobile responsive design */
+@media (max-width: 768px) {
+    .album-compact-row {
+        padding: 0.875rem 1rem;
+    }
+
+    .album-link {
+        font-size: 0.9rem;
+    }
+
+    .album-compact-count {
+        font-size: 0.8rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .album-compact-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+        padding: 1rem 0.875rem;
+    }
+
+    .album-compact-name {
+        width: 100%;
+    }
+
+    .album-compact-count {
+        align-self: flex-end;
+        font-size: 0.875rem;
+    }
+
+    .empty-state {
+        padding: 3rem 1rem;
+    }
+
+    .empty-state-icon {
+        font-size: 3rem;
+    }
+
+    .empty-state h3 {
+        font-size: 1.25rem;
+    }
+}
+</style>

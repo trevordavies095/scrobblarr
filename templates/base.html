@@ -22,8 +22,6 @@
     <meta name="theme-color" content="#1a1a1a">
 </head>
 <body>
-    <!-- Skip navigation link for accessibility -->
-    <a href="#main-content" class="skip-link">Skip to main content</a>
 
     <!-- Header -->
     <header class="header">
@@ -164,15 +162,7 @@
 
     <!-- htmx Configuration -->
     <script>
-        // Configure htmx for loading states and error handling
-        document.addEventListener('htmx:beforeRequest', function(evt) {
-            document.getElementById('loading-spinner').classList.remove('hidden');
-        });
-
-        document.addEventListener('htmx:afterRequest', function(evt) {
-            document.getElementById('loading-spinner').classList.add('hidden');
-        });
-
+        // Configure htmx for error handling
         document.addEventListener('htmx:responseError', function(evt) {
             showError('Failed to load data. Please try again.');
         });

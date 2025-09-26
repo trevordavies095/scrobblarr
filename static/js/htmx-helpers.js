@@ -3,6 +3,10 @@
  * Enhances htmx functionality with custom behaviors and utilities
  */
 
+// Prevent multiple execution with robust global flag
+if (typeof window.htmxHelpersInitialized === 'undefined') {
+    window.htmxHelpersInitialized = true;
+
 document.addEventListener('DOMContentLoaded', function() {
     initializeHtmxHelpers();
 });
@@ -528,8 +532,10 @@ window.ScrobblarrHtmx = {
     hideLocalLoadingIndicator
 };
 
-// Add CSS for htmx indicators
+// Add CSS for htmx indicators (prevent multiple execution)
+if (!document.getElementById('htmx-styles')) {
 const htmxStyles = document.createElement('style');
+htmxStyles.id = 'htmx-styles';
 htmxStyles.textContent = `
     .htmx-indicator {
         display: none;
@@ -591,3 +597,6 @@ htmxStyles.textContent = `
 `;
 
 document.head.appendChild(htmxStyles);
+}
+
+} // End htmx helpers execution guard
