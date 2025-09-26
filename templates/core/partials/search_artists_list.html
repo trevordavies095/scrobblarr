@@ -1,0 +1,18 @@
+{% if artists_results %}
+<div class="search-section">
+    <div class="search-section-header">
+        <h2 class="search-section-title">Artists</h2>
+        <span class="search-section-count">{{ artists_results|length }} result{{ artists_results|length|pluralize }}</span>
+    </div>
+    <div class="search-result-list">
+        {% for artist in artists_results %}
+            <div class="search-result-item" onclick="window.location.href='{{ artist.url }}'">
+                <div class="result-main-info">
+                    <a href="{{ artist.url }}" class="result-name">{{ artist.name }}</a>
+                    <span class="result-scrobbles"><strong>{{ artist.scrobble_count }}</strong> scrobble{{ artist.scrobble_count|pluralize }}</span>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}

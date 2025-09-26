@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeMobileNavigation();
     initializeMessageHandling();
     initializeAccessibilityFeatures();
+    initializeGlobalSearch();
 });
 
 /**
@@ -200,6 +201,47 @@ function hideLoading() {
     if (spinner) {
         spinner.classList.add('hidden');
         spinner.setAttribute('aria-hidden', 'true');
+    }
+}
+
+/**
+ * Global Search Functionality with Keyboard Shortcut
+ */
+function initializeGlobalSearch() {
+    const headerSearchInput = document.querySelector('.header-search .search-input');
+
+    if (!headerSearchInput) return;
+
+    // Cmd/Ctrl + K keyboard shortcut
+    document.addEventListener('keydown', function(e) {
+        // Check for Cmd+K (Mac) or Ctrl+K (Windows/Linux)
+        if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+            e.preventDefault();
+            headerSearchInput.focus();
+            headerSearchInput.select();
+        }
+
+        // Escape key to blur search when focused
+        if (e.key === 'Escape' && document.activeElement === headerSearchInput) {
+            headerSearchInput.blur();
+        }
+    });
+
+    // Submit search on Enter key
+    headerSearchInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            this.form.submit();
+        }
+    });
+
+    // Clear button functionality (if added in future)
+    const clearSearchBtn = document.querySelector('.search-clear-btn');
+    if (clearSearchBtn) {
+        clearSearchBtn.addEventListener('click', function() {
+            headerSearchInput.value = '';
+            headerSearchInput.focus();
+        });
     }
 }
 

@@ -1,0 +1,30 @@
+{% if has_results %}
+<div class="search-results-container">
+    {% if artists_results and selected_category in 'all,artists' %}
+        {% include 'core/partials/search_artists_list.html' %}
+    {% endif %}
+
+    {% if albums_results and selected_category in 'all,albums' %}
+        {% include 'core/partials/search_albums_list.html' %}
+    {% endif %}
+
+    {% if tracks_results and selected_category in 'all,tracks' %}
+        {% include 'core/partials/search_tracks_list.html' %}
+    {% endif %}
+</div>
+{% else %}
+<div class="empty-state">
+    <div class="empty-state-icon">🔍</div>
+    <h2 class="empty-state-title">No results found</h2>
+    <p class="empty-state-message">We couldn't find anything matching "{{ search_query }}"</p>
+    <div class="empty-state-suggestions">
+        <p class="empty-state-suggestions-title">Try:</p>
+        <ul>
+            <li>Checking your spelling</li>
+            <li>Using different keywords</li>
+            <li>Searching for an artist, album, or track name</li>
+            <li>Using fewer words</li>
+        </ul>
+    </div>
+</div>
+{% endif %}

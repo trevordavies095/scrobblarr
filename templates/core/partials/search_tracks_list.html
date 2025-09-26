@@ -1,0 +1,29 @@
+{% if tracks_results %}
+<div class="search-section">
+    <div class="search-section-header">
+        <h2 class="search-section-title">Tracks</h2>
+        <span class="search-section-count">{{ tracks_results|length }} result{{ tracks_results|length|pluralize }}</span>
+    </div>
+    <div class="search-result-list">
+        {% for track in tracks_results %}
+            <div class="search-result-item">
+                <div class="result-main-info">
+                    <div>
+                        <span class="result-name">{{ track.name }}</span>
+                        {% if track.duration %}
+                            <span class="result-duration">{{ track.duration }}</span>
+                        {% endif %}
+                    </div>
+                    <span class="result-scrobbles"><strong>{{ track.scrobble_count }}</strong> scrobble{{ track.scrobble_count|pluralize }}</span>
+                </div>
+                <div class="result-meta">
+                    by <a href="/artists/{{ track.artist_id }}/">{{ track.artist_name }}</a>
+                    {% if track.album_id %}
+                        • from <a href="/albums/{{ track.album_id }}/">{{ track.album_name }}</a>
+                    {% endif %}
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}

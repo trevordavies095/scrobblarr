@@ -1,0 +1,481 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ page_title }} - Scrobblarr{% endblock %}
+
+{% block extra_css %}
+<style>
+.search-header {
+    margin-bottom: 2rem;
+}
+
+.search-title {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(135deg, #bb86fc, #6200ee);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.search-subtitle {
+    color: #999;
+    font-size: 1.125rem;
+    margin-bottom: 2rem;
+}
+
+.search-query-display {
+    color: #bb86fc;
+    font-weight: 600;
+}
+
+.search-filters {
+    background-color: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.search-filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: center;
+}
+
+.search-input-group {
+    flex: 1;
+    min-width: 300px;
+}
+
+.search-input {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    background-color: #2a2a2a;
+    color: #e0e0e0;
+    border: 1px solid #444;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: all 0.2s ease;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: #bb86fc;
+    background-color: #333;
+}
+
+.category-filters {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.category-btn {
+    padding: 0.5rem 1rem;
+    background-color: #2a2a2a;
+    color: #e0e0e0;
+    border: 1px solid #444;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.9rem;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.category-btn:hover {
+    background-color: #333;
+    border-color: #bb86fc;
+}
+
+.category-btn.active {
+    background-color: #bb86fc;
+    border-color: #bb86fc;
+    color: #1a1a1a;
+    font-weight: 600;
+}
+
+.search-results-container {
+    display: grid;
+    gap: 2rem;
+}
+
+.search-section {
+    background-color: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 1.5rem;
+}
+
+.search-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #333;
+}
+
+.search-section-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #bb86fc;
+}
+
+.search-section-count {
+    font-size: 0.9rem;
+    color: #999;
+}
+
+.search-result-list {
+    display: grid;
+    gap: 1rem;
+}
+
+.search-result-item {
+    background-color: #2a2a2a;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 1rem;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.search-result-item:hover {
+    background-color: #333;
+    border-color: #bb86fc;
+    transform: translateY(-2px);
+}
+
+.result-main-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.result-name {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #bb86fc;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.result-name:hover {
+    color: #6200ee;
+}
+
+.result-scrobbles {
+    font-size: 0.9rem;
+    color: #999;
+    white-space: nowrap;
+}
+
+.result-scrobbles strong {
+    color: #e0e0e0;
+}
+
+.result-meta {
+    color: #999;
+    font-size: 0.9rem;
+}
+
+.result-meta a {
+    color: #bb86fc;
+    text-decoration: none;
+}
+
+.result-meta a:hover {
+    text-decoration: underline;
+}
+
+.result-duration {
+    color: #999;
+    font-size: 0.85rem;
+    margin-left: 1rem;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: #999;
+}
+
+.empty-state-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+}
+
+.empty-state-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: #e0e0e0;
+}
+
+.empty-state-message {
+    font-size: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.empty-state-suggestions {
+    background-color: #2a2a2a;
+    border: 1px solid #444;
+    border-radius: 8px;
+    padding: 1.5rem;
+    max-width: 500px;
+    margin: 0 auto;
+    text-align: left;
+}
+
+.empty-state-suggestions-title {
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    color: #e0e0e0;
+}
+
+.empty-state-suggestions ul {
+    list-style: none;
+    padding-left: 0;
+}
+
+.empty-state-suggestions li {
+    padding: 0.25rem 0;
+    color: #999;
+}
+
+.empty-state-suggestions li:before {
+    content: "→ ";
+    color: #bb86fc;
+    font-weight: bold;
+    margin-right: 0.5rem;
+}
+
+.recent-searches {
+    background-color: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.recent-searches-title {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    color: #e0e0e0;
+}
+
+.recent-searches-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.recent-search-tag {
+    padding: 0.5rem 1rem;
+    background-color: #2a2a2a;
+    color: #bb86fc;
+    border: 1px solid #444;
+    border-radius: 20px;
+    text-decoration: none;
+    font-size: 0.85rem;
+    transition: all 0.2s ease;
+}
+
+.recent-search-tag:hover {
+    background-color: #333;
+    border-color: #bb86fc;
+}
+
+@media (max-width: 768px) {
+    .search-title {
+        font-size: 2rem;
+    }
+
+    .search-input-group {
+        min-width: 100%;
+    }
+
+    .search-filter-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .category-filters {
+        justify-content: stretch;
+    }
+
+    .category-btn {
+        flex: 1;
+        text-align: center;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="search-page">
+    <div class="search-header">
+        <h1 class="search-title">Search Results</h1>
+        {% if search_query %}
+            <p class="search-subtitle">
+                Results for <span class="search-query-display">"{{ search_query }}"</span>
+                {% if total_results > 0 %}
+                    - Found {{ total_results }} result{{ total_results|pluralize }}
+                {% endif %}
+            </p>
+        {% else %}
+            <p class="search-subtitle">Enter a search query to find artists, albums, and tracks</p>
+        {% endif %}
+    </div>
+
+    <div class="search-filters">
+        <form method="get" action="{% url 'core:search' %}" class="search-filter-row">
+            <div class="search-input-group">
+                <input
+                    type="text"
+                    name="q"
+                    class="search-input"
+                    placeholder="Search for artists, albums, or tracks..."
+                    value="{{ search_query }}"
+                    autofocus
+                >
+            </div>
+            <div class="category-filters">
+                {% for option in category_options %}
+                    <a href="?q={{ search_query }}&category={{ option.value }}"
+                       class="category-btn{% if option.active %} active{% endif %}">
+                        {{ option.label }}
+                    </a>
+                {% endfor %}
+            </div>
+        </form>
+    </div>
+
+    {% if recent_searches and not search_query %}
+        <div class="recent-searches">
+            <h3 class="recent-searches-title">Recent Searches</h3>
+            <div class="recent-searches-list">
+                {% for recent in recent_searches %}
+                    <a href="?q={{ recent }}" class="recent-search-tag">{{ recent }}</a>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
+
+    {% if search_query %}
+        {% if has_results %}
+            <div class="search-results-container">
+                {% if artists_results and selected_category in 'all,artists' %}
+                    <div class="search-section">
+                        <div class="search-section-header">
+                            <h2 class="search-section-title">Artists</h2>
+                            <span class="search-section-count">{{ artists_results|length }} result{{ artists_results|length|pluralize }}</span>
+                        </div>
+                        <div class="search-result-list">
+                            {% for artist in artists_results %}
+                                <div class="search-result-item" onclick="window.location.href='{{ artist.url }}'">
+                                    <div class="result-main-info">
+                                        <a href="{{ artist.url }}" class="result-name">{{ artist.name }}</a>
+                                        <span class="result-scrobbles"><strong>{{ artist.scrobble_count }}</strong> scrobble{{ artist.scrobble_count|pluralize }}</span>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endif %}
+
+                {% if albums_results and selected_category in 'all,albums' %}
+                    <div class="search-section">
+                        <div class="search-section-header">
+                            <h2 class="search-section-title">Albums</h2>
+                            <span class="search-section-count">{{ albums_results|length }} result{{ albums_results|length|pluralize }}</span>
+                        </div>
+                        <div class="search-result-list">
+                            {% for album in albums_results %}
+                                <div class="search-result-item" onclick="window.location.href='{{ album.url }}'">
+                                    <div class="result-main-info">
+                                        <a href="{{ album.url }}" class="result-name">{{ album.name }}</a>
+                                        <span class="result-scrobbles"><strong>{{ album.scrobble_count }}</strong> scrobble{{ album.scrobble_count|pluralize }}</span>
+                                    </div>
+                                    <div class="result-meta">
+                                        by <a href="/artists/{{ album.artist_id }}/">{{ album.artist_name }}</a>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endif %}
+
+                {% if tracks_results and selected_category in 'all,tracks' %}
+                    <div class="search-section">
+                        <div class="search-section-header">
+                            <h2 class="search-section-title">Tracks</h2>
+                            <span class="search-section-count">{{ tracks_results|length }} result{{ tracks_results|length|pluralize }}</span>
+                        </div>
+                        <div class="search-result-list">
+                            {% for track in tracks_results %}
+                                <div class="search-result-item">
+                                    <div class="result-main-info">
+                                        <div>
+                                            <span class="result-name">{{ track.name }}</span>
+                                            {% if track.duration %}
+                                                <span class="result-duration">{{ track.duration }}</span>
+                                            {% endif %}
+                                        </div>
+                                        <span class="result-scrobbles"><strong>{{ track.scrobble_count }}</strong> scrobble{{ track.scrobble_count|pluralize }}</span>
+                                    </div>
+                                    <div class="result-meta">
+                                        by <a href="/artists/{{ track.artist_id }}/">{{ track.artist_name }}</a>
+                                        {% if track.album_id %}
+                                            • from <a href="/albums/{{ track.album_id }}/">{{ track.album_name }}</a>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <div class="empty-state-icon">🔍</div>
+                <h2 class="empty-state-title">No results found</h2>
+                <p class="empty-state-message">We couldn't find anything matching "{{ search_query }}"</p>
+                <div class="empty-state-suggestions">
+                    <p class="empty-state-suggestions-title">Try:</p>
+                    <ul>
+                        <li>Checking your spelling</li>
+                        <li>Using different keywords</li>
+                        <li>Searching for an artist, album, or track name</li>
+                        <li>Using fewer words</li>
+                    </ul>
+                </div>
+            </div>
+        {% endif %}
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.querySelector('.search-input');
+
+    if (searchInput) {
+        searchInput.focus();
+
+        searchInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                this.form.submit();
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

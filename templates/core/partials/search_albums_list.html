@@ -1,0 +1,21 @@
+{% if albums_results %}
+<div class="search-section">
+    <div class="search-section-header">
+        <h2 class="search-section-title">Albums</h2>
+        <span class="search-section-count">{{ albums_results|length }} result{{ albums_results|length|pluralize }}</span>
+    </div>
+    <div class="search-result-list">
+        {% for album in albums_results %}
+            <div class="search-result-item" onclick="window.location.href='{{ album.url }}'">
+                <div class="result-main-info">
+                    <a href="{{ album.url }}" class="result-name">{{ album.name }}</a>
+                    <span class="result-scrobbles"><strong>{{ album.scrobble_count }}</strong> scrobble{{ album.scrobble_count|pluralize }}</span>
+                </div>
+                <div class="result-meta">
+                    by <a href="/artists/{{ album.artist_id }}/">{{ album.artist_name }}</a>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}

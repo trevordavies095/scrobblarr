@@ -5,6 +5,7 @@ app_name = 'core'
 
 urlpatterns = [
     path('', views.index, name='index'),
+    path('search/', views.search, name='search'),
     path('recent/', views.recent_tracks, name='recent'),
     path('top-artists/', views.top_artists, name='top-artists'),
     path('top-albums/', views.top_albums, name='top-albums'),

@@ -1716,3 +1716,165 @@ def album_detail(request, pk):
             return render(request, 'core/partials/album_dynamic_content.html', context)
 
     return render(request, 'core/album_detail.html', context)
+
+
+def search(request):
+    """
+    Global search functionality across artists, albums, and tracks.
+    Implements Story 28: Search Functionality requirements.
+    """
+    from django.db.models import Q, Count
+    from django.core.paginator import Paginator
+
+    logger.info("Loading search page", extra={
+        'user_agent': request.META.get('HTTP_USER_AGENT', ''),
+        'remote_addr': request.META.get('REMOTE_ADDR')
+    })
+
+    start_time = timezone.now()
+
+    search_query = request.GET.get('q', '').strip()
+    category = request.GET.get('category', 'all').strip().lower()
+    limit_per_category = 20
+
+    valid_categories = ['all', 'artists', 'albums', 'tracks']
+    if category not in valid_categories:
+        category = 'all'
+
+    artists_results = []
+    albums_results = []
+    tracks_results = []
+    total_results = 0
+
+    if search_query:
+        try:
+            if category in ['all', 'artists']:
+                artists_query = Artist.objects.filter(
+                    name__icontains=search_query
+                ).annotate(
+                    scrobble_count=Count('tracks__scrobbles')
+                ).order_by('-scrobble_count', 'name')[:limit_per_category]
+
+                artists_results = [
+                    {
+                        'id': artist.id,
+                        'name': artist.name,
+                        'mbid': artist.mbid,
+                        'scrobble_count': artist.scrobble_count,
+                        'url': f'/artists/{artist.id}/'
+                    }
+                    for artist in artists_query
+                ]
+
+            if category in ['all', 'albums']:
+                albums_query = Album.objects.filter(
+                    Q(name__icontains=search_query) |
+                    Q(artist__name__icontains=search_query)
+                ).select_related('artist').annotate(
+                    scrobble_count=Count('tracks__scrobbles')
+                ).order_by('-scrobble_count', 'name')[:limit_per_category]
+
+                albums_results = [
+                    {
+                        'id': album.id,
+                        'name': album.name,
+                        'artist_name': album.artist.name,
+                        'artist_id': album.artist.id,
+                        'mbid': album.mbid,
+                        'scrobble_count': album.scrobble_count,
+                        'url': f'/albums/{album.id}/'
+                    }
+                    for album in albums_query
+                ]
+
+            if category in ['all', 'tracks']:
+                tracks_query = Track.objects.filter(
+                    Q(name__icontains=search_query) |
+                    Q(artist__name__icontains=search_query) |
+                    Q(album__name__icontains=search_query)
+                ).select_related('artist', 'album').annotate(
+                    scrobble_count=Count('scrobbles')
+                ).order_by('-scrobble_count', 'name')[:limit_per_category]
+
+                tracks_results = [
+                    {
+                        'id': track.id,
+                        'name': track.name,
+                        'artist_name': track.artist.name,
+                        'artist_id': track.artist.id,
+                        'album_name': track.album.name if track.album else 'Unknown Album',
+                        'album_id': track.album.id if track.album else None,
+                        'duration': track.get_duration_formatted() if track.duration else None,
+                        'scrobble_count': track.scrobble_count,
+                    }
+                    for track in tracks_query
+                ]
+
+            total_results = len(artists_results) + len(albums_results) + len(tracks_results)
+
+            if search_query:
+                recent_searches = request.session.get('recent_searches', [])
+                if search_query not in recent_searches:
+                    recent_searches.insert(0, search_query)
+                    recent_searches = recent_searches[:5]
+                    request.session['recent_searches'] = recent_searches
+
+            logger.info("Search completed", extra={
+                'search_query': search_query,
+                'category': category,
+                'artists_found': len(artists_results),
+                'albums_found': len(albums_results),
+                'tracks_found': len(tracks_results),
+                'total_results': total_results
+            })
+
+        except Exception as e:
+            logger.error("Error performing search", exc_info=True)
+            artists_results = []
+            albums_results = []
+            tracks_results = []
+            total_results = 0
+
+    recent_searches = request.session.get('recent_searches', [])
+
+    context = {
+        'search_query': search_query,
+        'selected_category': category,
+        'artists_results': artists_results,
+        'albums_results': albums_results,
+        'tracks_results': tracks_results,
+        'total_results': total_results,
+        'recent_searches': recent_searches,
+        'has_results': total_results > 0,
+        'breadcrumbs': [
+            {'title': 'Home', 'url': '/'},
+            {'title': 'Search', 'url': None},
+        ],
+        'page_title': f'Search Results for "{search_query}"' if search_query else 'Search',
+        'category_options': [
+            {'value': 'all', 'label': 'All', 'active': category == 'all'},
+            {'value': 'artists', 'label': 'Artists', 'active': category == 'artists'},
+            {'value': 'albums', 'label': 'Albums', 'active': category == 'albums'},
+            {'value': 'tracks', 'label': 'Tracks', 'active': category == 'tracks'},
+        ],
+    }
+
+    load_time = (timezone.now() - start_time).total_seconds()
+    logger.info("Search page loaded", extra={
+        'load_time_seconds': load_time,
+        'search_query': search_query,
+        'total_results': total_results
+    })
+
+    partial = request.GET.get('partial')
+    if partial:
+        if partial == 'artists':
+            return render(request, 'core/partials/search_artists_list.html', context)
+        elif partial == 'albums':
+            return render(request, 'core/partials/search_albums_list.html', context)
+        elif partial == 'tracks':
+            return render(request, 'core/partials/search_tracks_list.html', context)
+        elif partial == 'results':
+            return render(request, 'core/partials/search_all_results.html', context)
+
+    return render(request, 'core/search_results.html', context)
