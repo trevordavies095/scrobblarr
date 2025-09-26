@@ -381,6 +381,7 @@ LOGGING = {
 # Last.fm API configuration
 LASTFM_API_KEY = config('LASTFM_API_KEY', default='')
 LASTFM_API_SECRET = config('LASTFM_API_SECRET', default='')
+LASTFM_USERNAME = config('LASTFM_USERNAME', default='')
 SYNC_FREQUENCY = config('SYNC_FREQUENCY', default='daily')
 
 

@@ -1878,3 +1878,133 @@ def search(request):
             return render(request, 'core/partials/search_all_results.html', context)
 
     return render(request, 'core/search_results.html', context)
+
+
+def settings_view(request):
+    """
+    Settings page for Last.fm configuration and other app settings.
+    Implements Story 31: Last.fm API Configuration requirements.
+    """
+    from music.lastfm import LastFmClient
+    from music.lastfm.config import get_lastfm_config
+    from music.models import SyncStatus
+    from core.forms import LastFmSettingsForm
+    import os
+
+    logger.info("Loading settings page", extra={
+        'user_agent': request.META.get('HTTP_USER_AGENT', ''),
+        'remote_addr': request.META.get('REMOTE_ADDR')
+    })
+
+    start_time = timezone.now()
+
+    lastfm_config = get_lastfm_config()
+    connection_test_result = None
+    form_success = False
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+
+        if action == 'test_connection':
+            logger.info("Testing Last.fm connection")
+
+            try:
+                with LastFmClient(lastfm_config) as client:
+                    success, error_message = client.test_connection()
+
+                if success:
+                    connection_test_result = {
+                        'success': True,
+                        'message': f"Successfully connected to Last.fm as {lastfm_config.username}"
+                    }
+                    logger.info("Last.fm connection test passed")
+                else:
+                    connection_test_result = {
+                        'success': False,
+                        'message': error_message or "Connection test failed"
+                    }
+                    logger.warning(f"Last.fm connection test failed: {error_message}")
+
+            except Exception as e:
+                logger.error("Error during Last.fm connection test", exc_info=True)
+                connection_test_result = {
+                    'success': False,
+                    'message': f"Connection test error: {str(e)}"
+                }
+
+            initial_data = {
+                'lastfm_username': lastfm_config.username,
+                'sync_frequency': lastfm_config.sync_frequency,
+            }
+            form = LastFmSettingsForm(initial=initial_data)
+
+        elif action == 'save_settings':
+            logger.info("Saving Last.fm settings")
+            form = LastFmSettingsForm(request.POST)
+
+            if form.is_valid():
+                username = form.cleaned_data['lastfm_username']
+                sync_frequency = form.cleaned_data['sync_frequency']
+
+                logger.info(
+                    "Updating settings (Note: Settings are environment-based, update .env file)",
+                    extra={
+                        'username': username,
+                        'sync_frequency': sync_frequency
+                    }
+                )
+
+                form_success = True
+
+                logger.info("Settings update noted - user should update .env file")
+
+            else:
+                logger.warning("Settings form validation failed", extra={
+                    'errors': form.errors.as_json()
+                })
+    else:
+        initial_data = {
+            'lastfm_username': lastfm_config.username,
+            'sync_frequency': lastfm_config.sync_frequency,
+        }
+        form = LastFmSettingsForm(initial=initial_data)
+
+    config_status = lastfm_config.get_status()
+
+    try:
+        sync_status = SyncStatus.objects.first()
+        if not sync_status:
+            sync_status = SyncStatus.objects.create()
+    except Exception as e:
+        logger.error("Error fetching sync status", exc_info=True)
+        sync_status = None
+
+    context = {
+        'form': form,
+        'config_status': config_status,
+        'connection_test_result': connection_test_result,
+        'form_success': form_success,
+        'sync_status': sync_status,
+        'api_key_configured': config_status['has_api_key'],
+        'api_secret_configured': config_status['has_api_secret'],
+        'username_configured': config_status['has_username'],
+        'is_fully_configured': config_status['configured'],
+        'breadcrumbs': [
+            {'title': 'Home', 'url': '/'},
+            {'title': 'Settings', 'url': None},
+        ],
+        'page_title': 'Settings',
+    }
+
+    load_time = (timezone.now() - start_time).total_seconds()
+    logger.info("Settings page loaded", extra={
+        'load_time_seconds': load_time,
+        'configured': config_status['configured']
+    })
+
+    partial = request.GET.get('partial')
+    if partial:
+        if partial == 'lastfm':
+            return render(request, 'core/partials/lastfm_settings.html', context)
+
+    return render(request, 'core/settings.html', context)

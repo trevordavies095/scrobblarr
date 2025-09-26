@@ -1,0 +1,448 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Settings - Scrobblarr{% endblock %}
+
+{% block extra_css %}
+<style>
+    .settings-container {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 2rem 0;
+    }
+
+    .settings-section {
+        background: var(--surface-color, #2a2a2a);
+        border-radius: 8px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        border: 1px solid var(--border-color, #3a3a3a);
+    }
+
+    .settings-section-header {
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--border-color, #3a3a3a);
+    }
+
+    .settings-section-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--text-primary, #ffffff);
+        margin: 0 0 0.5rem 0;
+    }
+
+    .settings-section-description {
+        font-size: 0.95rem;
+        color: var(--text-secondary, #999);
+        margin: 0;
+    }
+
+    .settings-grid {
+        display: grid;
+        gap: 1.5rem;
+    }
+
+    .config-status {
+        display: grid;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .status-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem;
+        background: var(--background-color, #1a1a1a);
+        border-radius: 4px;
+        border: 1px solid var(--border-color, #3a3a3a);
+    }
+
+    .status-label {
+        font-weight: 500;
+        color: var(--text-primary, #ffffff);
+    }
+
+    .status-value {
+        font-family: 'Courier New', monospace;
+        padding: 0.25rem 0.5rem;
+        background: var(--surface-color, #2a2a2a);
+        border-radius: 4px;
+        font-size: 0.9rem;
+    }
+
+    .status-valid {
+        color: #4ade80;
+    }
+
+    .status-invalid {
+        color: #f87171;
+    }
+
+    .status-warning {
+        color: #fbbf24;
+    }
+
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+
+    .form-label {
+        display: block;
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+        color: var(--text-primary, #ffffff);
+    }
+
+    .form-help {
+        display: block;
+        font-size: 0.85rem;
+        color: var(--text-secondary, #999);
+        margin-top: 0.25rem;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 0.75rem;
+        background: var(--background-color, #1a1a1a);
+        border: 1px solid var(--border-color, #3a3a3a);
+        border-radius: 4px;
+        color: var(--text-primary, #ffffff);
+        font-size: 1rem;
+        transition: border-color 0.2s;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: var(--accent-color, #3b82f6);
+    }
+
+    .form-actions {
+        display: flex;
+        gap: 1rem;
+        margin-top: 2rem;
+    }
+
+    .btn {
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 4px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-size: 1rem;
+    }
+
+    .btn-primary {
+        background: var(--accent-color, #3b82f6);
+        color: white;
+    }
+
+    .btn-primary:hover {
+        background: var(--accent-hover, #2563eb);
+    }
+
+    .btn-secondary {
+        background: var(--surface-color, #2a2a2a);
+        color: var(--text-primary, #ffffff);
+        border: 1px solid var(--border-color, #3a3a3a);
+    }
+
+    .btn-secondary:hover {
+        background: var(--background-color, #1a1a1a);
+    }
+
+    .alert {
+        padding: 1rem;
+        border-radius: 4px;
+        margin-bottom: 1.5rem;
+    }
+
+    .alert-success {
+        background: rgba(74, 222, 128, 0.1);
+        border: 1px solid #4ade80;
+        color: #4ade80;
+    }
+
+    .alert-error {
+        background: rgba(248, 113, 113, 0.1);
+        border: 1px solid #f87171;
+        color: #f87171;
+    }
+
+    .alert-info {
+        background: rgba(96, 165, 250, 0.1);
+        border: 1px solid #60a5fa;
+        color: #60a5fa;
+    }
+
+    .documentation-link {
+        display: inline-block;
+        margin-top: 1rem;
+        color: var(--accent-color, #3b82f6);
+        text-decoration: none;
+        font-size: 0.9rem;
+    }
+
+    .documentation-link:hover {
+        text-decoration: underline;
+    }
+
+    .errorlist {
+        list-style: none;
+        padding: 0;
+        margin: 0.5rem 0 0 0;
+    }
+
+    .errorlist li {
+        color: #f87171;
+        font-size: 0.85rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="settings-container">
+    <h1 class="page-title">Settings</h1>
+
+    {% if form_success %}
+    <div class="alert alert-info">
+        <strong>Note:</strong> Settings are managed through environment variables. To update these settings permanently,
+        please edit your <code>.env</code> file with the values above and restart the application.
+    </div>
+    {% endif %}
+
+    {% if connection_test_result %}
+        {% if connection_test_result.success %}
+        <div class="alert alert-success">
+            <strong>✓ Connection Successful</strong><br>
+            {{ connection_test_result.message }}
+        </div>
+        {% else %}
+        <div class="alert alert-error">
+            <strong>✗ Connection Failed</strong><br>
+            {{ connection_test_result.message }}
+        </div>
+        {% endif %}
+    {% endif %}
+
+    <div class="settings-section">
+        <div class="settings-section-header">
+            <h2 class="settings-section-title">Last.fm Integration</h2>
+            <p class="settings-section-description">
+                Configure your Last.fm account for automatic scrobble synchronization
+            </p>
+        </div>
+
+        <div class="config-status">
+            <div class="status-item">
+                <span class="status-label">API Key:</span>
+                <span class="status-value {% if api_key_configured %}status-valid{% else %}status-invalid{% endif %}">
+                    {% if api_key_configured %}
+                        {{ config_status.masked_api_key }} ✓
+                    {% else %}
+                        Not configured ✗
+                    {% endif %}
+                </span>
+            </div>
+
+            <div class="status-item">
+                <span class="status-label">API Secret:</span>
+                <span class="status-value {% if api_secret_configured %}status-valid{% else %}status-invalid{% endif %}">
+                    {% if api_secret_configured %}
+                        Configured ✓
+                    {% else %}
+                        Not configured ✗
+                    {% endif %}
+                </span>
+            </div>
+
+            <div class="status-item">
+                <span class="status-label">Username:</span>
+                <span class="status-value {% if username_configured %}status-valid{% else %}status-invalid{% endif %}">
+                    {% if username_configured %}
+                        {{ config_status.username }} ✓
+                    {% else %}
+                        Not configured ✗
+                    {% endif %}
+                </span>
+            </div>
+
+            <div class="status-item">
+                <span class="status-label">Overall Status:</span>
+                <span class="status-value {% if is_fully_configured %}status-valid{% else %}status-invalid{% endif %}">
+                    {% if is_fully_configured %}
+                        Configured ✓
+                    {% else %}
+                        Incomplete ✗
+                    {% endif %}
+                </span>
+            </div>
+        </div>
+
+        {% if not is_fully_configured %}
+        <div class="alert alert-info">
+            <strong>Configuration Required</strong><br>
+            To use Last.fm integration, you need to configure your API credentials in the <code>.env</code> file.
+            <a href="#documentation" class="documentation-link">View setup instructions →</a>
+        </div>
+        {% endif %}
+
+        <form method="post" action="{% url 'core:settings' %}">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_settings">
+
+            <div class="form-group">
+                <label for="id_lastfm_username" class="form-label">
+                    {{ form.lastfm_username.label }}
+                </label>
+                {{ form.lastfm_username }}
+                {% if form.lastfm_username.help_text %}
+                <span class="form-help">{{ form.lastfm_username.help_text }}</span>
+                {% endif %}
+                {{ form.lastfm_username.errors }}
+            </div>
+
+            <div class="form-group">
+                <label for="id_sync_frequency" class="form-label">
+                    {{ form.sync_frequency.label }}
+                </label>
+                {{ form.sync_frequency }}
+                {% if form.sync_frequency.help_text %}
+                <span class="form-help">{{ form.sync_frequency.help_text }}</span>
+                {% endif %}
+                {{ form.sync_frequency.errors }}
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">
+                    Save Settings
+                </button>
+            </div>
+        </form>
+
+        <form method="post" action="{% url 'core:settings' %}" style="margin-top: 1rem;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="test_connection">
+            <button type="submit" class="btn btn-secondary" {% if not is_fully_configured %}disabled{% endif %}>
+                Test Connection
+            </button>
+        </form>
+    </div>
+
+    {% if sync_status %}
+    <div class="settings-section">
+        <div class="settings-section-header">
+            <h2 class="settings-section-title">Sync Status</h2>
+            <p class="settings-section-description">
+                Current synchronization status and history
+            </p>
+        </div>
+
+        <div class="config-status">
+            <div class="status-item">
+                <span class="status-label">Status:</span>
+                <span class="status-value
+                    {% if sync_status.status == 'success' %}status-valid
+                    {% elif sync_status.status == 'error' %}status-invalid
+                    {% elif sync_status.status == 'syncing' %}status-warning
+                    {% endif %}">
+                    {{ sync_status.get_status_display }}
+                </span>
+            </div>
+
+            {% if sync_status.last_sync_timestamp %}
+            <div class="status-item">
+                <span class="status-label">Last Sync:</span>
+                <span class="status-value">
+                    {{ sync_status.last_sync_timestamp|date:"Y-m-d H:i:s" }}
+                </span>
+            </div>
+            {% endif %}
+
+            <div class="status-item">
+                <span class="status-label">Total Syncs:</span>
+                <span class="status-value">
+                    {{ sync_status.sync_count }}
+                </span>
+            </div>
+
+            {% if sync_status.error_message %}
+            <div class="status-item">
+                <span class="status-label">Last Error:</span>
+                <span class="status-value status-invalid">
+                    {{ sync_status.error_message }}
+                </span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="settings-section" id="documentation">
+        <div class="settings-section-header">
+            <h2 class="settings-section-title">Getting Started</h2>
+            <p class="settings-section-description">
+                How to obtain and configure Last.fm API credentials
+            </p>
+        </div>
+
+        <div class="settings-grid">
+            <div>
+                <h3 style="color: var(--text-primary); margin-bottom: 0.5rem;">1. Create a Last.fm API Account</h3>
+                <p style="color: var(--text-secondary); line-height: 1.6;">
+                    Visit <a href="https://www.last.fm/api/account/create" target="_blank" rel="noopener" class="documentation-link">
+                        Last.fm API Account Creation
+                    </a> and create a new API account.
+                </p>
+            </div>
+
+            <div>
+                <h3 style="color: var(--text-primary); margin-bottom: 0.5rem;">2. Configure Environment Variables</h3>
+                <p style="color: var(--text-secondary); line-height: 1.6;">
+                    Add the following to your <code>.env</code> file:
+                </p>
+                <pre style="background: var(--background-color); padding: 1rem; border-radius: 4px; overflow-x: auto; margin-top: 0.5rem;">
+LASTFM_API_KEY=your_api_key_here
+LASTFM_API_SECRET=your_api_secret_here
+LASTFM_USERNAME=your_lastfm_username
+SYNC_FREQUENCY=hourly  # or daily, manual
+                </pre>
+            </div>
+
+            <div>
+                <h3 style="color: var(--text-primary); margin-bottom: 0.5rem;">3. Restart the Application</h3>
+                <p style="color: var(--text-secondary); line-height: 1.6;">
+                    After updating the <code>.env</code> file, restart the application for changes to take effect:
+                </p>
+                <pre style="background: var(--background-color); padding: 1rem; border-radius: 4px; overflow-x: auto; margin-top: 0.5rem;">
+python manage.py runserver
+                </pre>
+            </div>
+
+            <div>
+                <h3 style="color: var(--text-primary); margin-bottom: 0.5rem;">4. Test Your Connection</h3>
+                <p style="color: var(--text-secondary); line-height: 1.6;">
+                    Once configured, use the "Test Connection" button above to verify your credentials.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const testButton = document.querySelector('button[type="submit"][value="test_connection"]');
+
+        if (testButton && testButton.closest('form')) {
+            testButton.closest('form').addEventListener('submit', function() {
+                testButton.disabled = true;
+                testButton.textContent = 'Testing...';
+            });
+        }
+    });
+</script>
+{% endblock %}
