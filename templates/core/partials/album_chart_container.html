@@ -1,0 +1,258 @@
+<!-- Album Chart Container -->
+<div class="chart-container">
+    {% if chart_data_dict.success %}
+        <div class="chart-header">
+            <h3 class="chart-title">Album Listening Over Time</h3>
+            <div class="chart-subtitle">{{ period_display }}</div>
+        </div>
+
+        <div class="chart-wrapper">
+            <canvas id="albumChart" width="800" height="400"></canvas>
+        </div>
+
+        {% if chart_data_dict.labels %}
+        <div class="chart-stats">
+            <div class="chart-stat-item">
+                <span class="chart-stat-label">Data Points:</span>
+                <span class="chart-stat-value">{{ chart_data_dict.labels|length }}</span>
+            </div>
+            <div class="chart-stat-item">
+                <span class="chart-stat-label">Peak Period:</span>
+                <span class="chart-stat-value">
+                    {% for value in chart_data_dict.values %}
+                        {% if forloop.first %}{{ value }}{% endif %}
+                        {% for v in chart_data_dict.values %}
+                            {% if v > value %}
+                                {% if forloop.last %}{{ v }}{% endif %}
+                            {% endif %}
+                        {% endfor %}
+                    {% endfor %}
+                    scrobbles
+                </span>
+            </div>
+        </div>
+        {% endif %}
+    {% else %}
+        <div class="chart-error">
+            <div class="chart-error-icon">📊</div>
+            <h4>Chart Unavailable</h4>
+            <p>{{ chart_data_dict.error|default:"No chart data available for this album in the selected time period." }}</p>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Only initialize chart if we have data and the canvas exists
+    if (window.chartDataGlobal && window.chartDataGlobal.success && document.getElementById('albumChart')) {
+        const ctx = document.getElementById('albumChart').getContext('2d');
+
+        // Destroy existing chart if it exists
+        if (window.albumChartInstance) {
+            window.albumChartInstance.destroy();
+        }
+
+        const chartData = window.chartDataGlobal;
+
+        window.albumChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: chartData.labels,
+                datasets: [{
+                    label: 'Scrobbles',
+                    data: chartData.values,
+                    backgroundColor: 'rgba(187, 134, 252, 0.6)',
+                    borderColor: 'rgba(187, 134, 252, 1)',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(30, 30, 30, 0.95)',
+                        titleColor: '#e0e0e0',
+                        bodyColor: '#e0e0e0',
+                        borderColor: '#333',
+                        borderWidth: 1,
+                        cornerRadius: 8,
+                        callbacks: {
+                            title: function(context) {
+                                return context[0].label;
+                            },
+                            label: function(context) {
+                                const value = context.parsed.y;
+                                return `${value} scrobble${value !== 1 ? 's' : ''}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)',
+                            borderColor: '#333'
+                        },
+                        ticks: {
+                            color: '#999',
+                            maxTicksLimit: 12
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)',
+                            borderColor: '#333'
+                        },
+                        ticks: {
+                            color: '#999',
+                            stepSize: 1
+                        }
+                    }
+                }
+            }
+        });
+    }
+});
+
+// Update chart data when htmx loads new content
+document.addEventListener('htmx:afterSettle', function(event) {
+    // Check if chart data script exists and parse it
+    const chartDataScript = document.getElementById('chart-data-global');
+    if (chartDataScript) {
+        try {
+            window.chartDataGlobal = JSON.parse(chartDataScript.textContent);
+        } catch (e) {
+            console.error('Error parsing chart data:', e);
+        }
+    }
+
+    // Reinitialize chart if the chart container was updated
+    if (event.detail.target.querySelector('#albumChart')) {
+        setTimeout(() => {
+            const event = new Event('DOMContentLoaded');
+            document.dispatchEvent(event);
+        }, 100);
+    }
+});
+</script>
+
+<style>
+.chart-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.chart-header {
+    text-align: center;
+}
+
+.chart-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #e0e0e0;
+    margin: 0 0 0.5rem 0;
+}
+
+.chart-subtitle {
+    color: #999;
+    font-size: 0.9rem;
+}
+
+.chart-wrapper {
+    position: relative;
+    height: 400px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.chart-stats {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    flex-wrap: wrap;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid #333;
+    border-radius: 8px;
+}
+
+.chart-stat-item {
+    text-align: center;
+}
+
+.chart-stat-label {
+    display: block;
+    font-size: 0.8rem;
+    color: #999;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.25rem;
+}
+
+.chart-stat-value {
+    display: block;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #bb86fc;
+}
+
+.chart-error {
+    text-align: center;
+    padding: 3rem 2rem;
+    color: #999;
+}
+
+.chart-error-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.7;
+    display: block;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .chart-wrapper {
+        height: 300px;
+        padding: 0.75rem;
+    }
+
+    .chart-stats {
+        gap: 1rem;
+        padding: 0.75rem;
+    }
+
+    .chart-stat-item {
+        flex: 1;
+        min-width: 100px;
+    }
+}
+
+@media (max-width: 480px) {
+    .chart-wrapper {
+        height: 250px;
+        padding: 0.5rem;
+    }
+
+    .chart-title {
+        font-size: 1.25rem;
+    }
+
+    .chart-stats {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+}
+</style>

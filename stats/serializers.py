@@ -34,9 +34,9 @@ class AlbumListSerializer(serializers.ModelSerializer):
 class TopAlbumsSerializer(serializers.ModelSerializer):
     """
     Story 11 compliant serializer for top albums API.
-    Returns album, artist, scrobble_count, mbid format.
+    Returns id, name, artist, scrobble_count, mbid format.
     """
-    album = serializers.CharField(source='name', read_only=True)
+    name = serializers.CharField(read_only=True)
     artist = serializers.CharField(source='artist.name', read_only=True)
     artist_id = serializers.IntegerField(source='artist.id', read_only=True)
     scrobble_count = serializers.IntegerField(read_only=True)
@@ -44,7 +44,7 @@ class TopAlbumsSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Album
-        fields = ['album', 'artist', 'artist_id', 'scrobble_count', 'mbid']
+        fields = ['id', 'name', 'artist', 'artist_id', 'scrobble_count', 'mbid']
 
 
 class TopTracksSerializer(serializers.ModelSerializer):
@@ -282,6 +282,7 @@ class ArtistStory14Serializer(serializers.Serializer):
 
         return [
             {
+                'id': album.id,
                 'name': album.name,
                 'scrobble_count': album.scrobble_count
             }
@@ -348,8 +349,10 @@ class AlbumStory15Serializer(serializers.Serializer):
         last_scrobble = scrobble_qs.order_by('-timestamp').first()
 
         return {
+            'id': obj.id,
             'name': obj.name,
             'artist': obj.artist.name,
+            'artist_id': obj.artist.id,
             'mbid': obj.mbid,
             'total_scrobbles': scrobble_qs.count(),
             'first_scrobble': first_scrobble.timestamp.isoformat() + 'Z' if first_scrobble else None,
@@ -370,14 +373,25 @@ class AlbumStory15Serializer(serializers.Serializer):
             # Since we don't have explicit track ordering in the model, order by name for consistency
             tracks_qs = tracks_qs.order_by('name')
 
-        return [
-            {
-                'track': track.name,
+        # Calculate total album scrobbles for percentage calculations
+        total_album_scrobbles = sum(track.scrobble_count for track in tracks_qs)
+
+        track_data = []
+        for index, track in enumerate(tracks_qs, 1):
+            # Calculate percentage of total album scrobbles
+            percentage = (track.scrobble_count / total_album_scrobbles * 100) if total_album_scrobbles > 0 else 0
+
+            track_data.append({
+                'id': track.id,
+                'name': track.name,
+                'track_order': index,  # Use position in list as track order
                 'scrobble_count': track.scrobble_count,
-                'mbid': track.mbid
-            }
-            for track in tracks_qs
-        ]
+                'percentage': round(percentage, 1),
+                'mbid': track.mbid,
+                'duration_formatted': track.get_duration_formatted() if track.duration else None,
+            })
+
+        return track_data
 
     def get_chart_data(self, obj):
         """Get chart data for this album using existing chart infrastructure."""

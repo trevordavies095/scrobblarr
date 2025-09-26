@@ -1,0 +1,497 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }} - Scrobblarr{% endblock %}
+
+{% block extra_head %}
+<!-- Chart.js is already loaded in base.html -->
+{% endblock %}
+
+{% block content %}
+<div class="album-detail-page">
+    {% if album_success %}
+        <!-- Album Header -->
+        <div class="album-header">
+            <h1 class="album-name">{{ album_info.name }}</h1>
+            <div class="album-artist">
+                {% if album_info.artist_id %}
+                    <span class="by-text">by</span>
+                    <a href="{% url 'core:artist-detail' album_info.artist_id %}" class="artist-link">{{ album_info.artist_name }}</a>
+                {% else %}
+                    <span class="by-text">by</span>
+                    <span class="artist-name">{{ album_info.artist_name }}</span>
+                {% endif %}
+            </div>
+            <div class="album-stats">
+                <div class="stat-item">
+                    <span class="stat-label">Total Scrobbles:</span>
+                    <span class="stat-value">{{ album_info.total_scrobbles|floatformat:0 }}</span>
+                </div>
+                {% if album_info.first_scrobbled %}
+                <div class="stat-item">
+                    <span class="stat-separator">•</span>
+                    <span class="stat-label">First:</span>
+                    <span class="stat-value">{{ album_info.first_scrobbled|date:"M j, Y" }}</span>
+                </div>
+                {% endif %}
+                {% if album_info.last_scrobbled %}
+                <div class="stat-item">
+                    <span class="stat-separator">•</span>
+                    <span class="stat-label">Last:</span>
+                    <span class="stat-value">{{ album_info.last_scrobbled|date:"M j, Y" }}</span>
+                </div>
+                {% endif %}
+                {% if album_info.track_count %}
+                <div class="stat-item">
+                    <span class="stat-separator">•</span>
+                    <span class="stat-label">Tracks:</span>
+                    <span class="stat-value">{{ album_info.track_count }}</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Tab Navigation -->
+        <div class="tab-navigation">
+            {% for tab_option in tab_options %}
+            <a href="{% url 'core:album-detail' album_info.id %}?period={{ selected_period }}&tab={{ tab_option.value }}"
+               class="tab-link{% if tab_option.active %} active{% endif %}"
+               hx-get="{% url 'core:album-detail' album_info.id %}?period={{ selected_period }}&tab={{ tab_option.value }}&partial=full"
+               hx-target="#album-dynamic-content"
+               hx-push-url="false">
+                {{ tab_option.label }}
+            </a>
+            {% endfor %}
+        </div>
+
+        <!-- Dynamic Content Area (includes time period selector + tab content) -->
+        <div id="album-dynamic-content" class="album-dynamic-content">
+            <!-- Time Period Selector -->
+            <div class="album-filters">
+                <div class="filter-section">
+                    <label class="filter-label">Time Period:</label>
+                    <div class="period-selector">
+                        {% for option in period_options %}
+                        <a href="{% url 'core:album-detail' album_info.id %}?period={{ option.value }}&tab={{ selected_tab }}"
+                           class="period-btn{% if option.active %} active{% endif %}"
+                           hx-get="{% url 'core:album-detail' album_info.id %}?period={{ option.value }}&tab={{ selected_tab }}&partial=full"
+                           hx-target="#album-dynamic-content"
+                           hx-push-url="false">
+                            {{ option.label }}
+                        </a>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="filter-summary">
+                    <span class="summary-text">{{ period_display }}</span>
+                </div>
+            </div>
+
+            <!-- Tab Content -->
+            <div id="album-content" class="album-content">
+            {% if selected_tab == 'overview' %}
+                <!-- Overview Tab Content -->
+                <div class="overview-content">
+                    <!-- Track Listing Section -->
+                    <div class="content-section tracks-section">
+                        <h3 class="section-title">Track Listing</h3>
+                        {% include "core/partials/album_tracks_list.html" %}
+                    </div>
+                </div>
+
+            {% elif selected_tab == 'charts' %}
+                {% include "core/partials/album_chart_container.html" %}
+
+            {% endif %}
+            </div>
+        </div>
+
+    {% else %}
+        <!-- Error State -->
+        <div class="album-error">
+            <div class="album-error-icon">⚠️</div>
+            <h3>Unable to Load Album</h3>
+            <p>{{ album_error|default:"There was a problem loading the album data. Please try again later." }}</p>
+            <div style="margin-top: 1rem;">
+                <button onclick="window.location.reload()" class="btn btn-secondary btn-sm">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="23,4 23,10 17,10"/>
+                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                    </svg>
+                    Retry
+                </button>
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Chart Data for JavaScript -->
+<script type="application/json" id="chart-data-global">
+{{ chart_data|safe }}
+</script>
+
+<!-- Album Detail JavaScript (prevent multiple loading) -->
+{% load static %}
+<script>
+if (!window.albumDetailScriptLoaded) {
+    window.albumDetailScriptLoaded = true;
+    var script = document.createElement('script');
+    script.src = "{% static 'js/album_detail.js' %}";
+    document.head.appendChild(script);
+}
+</script>
+
+<style>
+/* Album Detail Page Specific Styles */
+.album-detail-page {
+    animation: fadeIn 0.4s ease-out;
+}
+
+.album-header {
+    margin-bottom: 2rem;
+    text-align: center;
+}
+
+.album-name {
+    font-size: 3rem;
+    font-weight: 700;
+    color: #e0e0e0;
+    margin: 0 0 0.5rem 0;
+    background: linear-gradient(135deg, #bb86fc, #6200ee);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.album-artist {
+    margin-bottom: 1rem;
+    font-size: 1.5rem;
+}
+
+.by-text {
+    color: #999;
+    margin-right: 0.5rem;
+    font-weight: 400;
+}
+
+.artist-link {
+    color: #bb86fc;
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.2s ease;
+}
+
+.artist-link:hover {
+    color: #e0e0e0;
+}
+
+.artist-name {
+    color: #e0e0e0;
+    font-weight: 600;
+}
+
+.album-stats {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    color: #999;
+    font-size: 0.9rem;
+}
+
+.stat-item {
+    display: flex;
+    align-items: baseline;
+    gap: 0.25rem;
+}
+
+.stat-label {
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+.stat-value {
+    color: #e0e0e0;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.stat-separator {
+    color: #666;
+}
+
+.album-filters {
+    background: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.filter-section {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.album-filters .filter-label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #bb86fc;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    line-height: 1.2;
+    display: flex;
+    align-items: center;
+    min-height: 2.5rem;
+}
+
+.filter-summary {
+    color: #999;
+    font-size: 0.875rem;
+}
+
+.tab-navigation {
+    display: flex;
+    background: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 12px;
+    margin-bottom: 2rem;
+    overflow: hidden;
+}
+
+.tab-link {
+    flex: 1;
+    padding: 1rem 1.5rem;
+    text-align: center;
+    background: transparent;
+    color: #999;
+    text-decoration: none;
+    border: none;
+    border-right: 1px solid #333;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.tab-link:last-child {
+    border-right: none;
+}
+
+.tab-link:hover {
+    background: rgba(187, 134, 252, 0.1);
+    color: #e0e0e0;
+}
+
+.tab-link.active {
+    background: #bb86fc;
+    color: #1e1e1e;
+    font-weight: 600;
+}
+
+.album-content {
+    background: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 2rem;
+    min-height: 400px;
+}
+
+.overview-content {
+    display: flex;
+    flex-direction: column;
+    gap: 3rem;
+}
+
+.content-section {
+    display: flex;
+    flex-direction: column;
+}
+
+.section-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #bb86fc;
+    margin: 0 0 1.5rem 0;
+    border-bottom: 1px solid #333;
+    padding-bottom: 0.5rem;
+}
+
+.tracks-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.track-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    transition: background 0.2s ease;
+}
+
+.track-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.track-rank {
+    font-weight: 600;
+    color: #bb86fc;
+    min-width: 2rem;
+    text-align: right;
+    font-size: 0.9rem;
+}
+
+.track-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.track-name {
+    color: #e0e0e0;
+    font-weight: 500;
+    line-height: 1.4;
+    font-size: 0.95rem;
+}
+
+.track-stats {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    color: #999;
+    font-size: 0.875rem;
+}
+
+.track-scrobbles {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.track-percentage {
+    color: #bb86fc;
+    font-weight: 500;
+}
+
+.track-duration {
+    color: #777;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 3rem 2rem;
+    color: #999;
+}
+
+.album-error {
+    text-align: center;
+    padding: 3rem 2rem;
+    color: #ff6b6b;
+    background: rgba(244, 67, 54, 0.05);
+    border: 1px solid rgba(244, 67, 54, 0.2);
+    border-radius: 8px;
+}
+
+.album-error-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.7;
+    display: block;
+}
+
+/* Mobile responsive design */
+@media (max-width: 768px) {
+    .album-name {
+        font-size: 2.5rem;
+    }
+
+    .album-artist {
+        font-size: 1.25rem;
+    }
+
+    .album-stats {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .album-filters {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 1rem;
+    }
+
+    .filter-section {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+    }
+
+    .tab-navigation {
+        flex-direction: column;
+    }
+
+    .tab-link {
+        border-right: none;
+        border-bottom: 1px solid #333;
+    }
+
+    .tab-link:last-child {
+        border-bottom: none;
+    }
+
+    .overview-content {
+        gap: 2rem;
+    }
+
+    .album-content {
+        padding: 1.5rem;
+    }
+
+    .track-item {
+        padding: 0.75rem;
+    }
+
+    .track-stats {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.25rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .album-name {
+        font-size: 2rem;
+    }
+
+    .album-artist {
+        font-size: 1rem;
+    }
+
+    .album-filters {
+        padding: 1rem;
+    }
+
+    .album-content {
+        padding: 1rem;
+    }
+
+    .track-item {
+        padding: 0.75rem;
+        gap: 0.75rem;
+    }
+
+    .track-rank {
+        min-width: 1.5rem;
+    }
+}
+</style>
+{% endblock %}

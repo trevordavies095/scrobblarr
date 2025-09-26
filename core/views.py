@@ -700,7 +700,7 @@ def top_albums(request):
                 formatted_albums.append({
                     'rank': rank,
                     'id': album.get('id'),
-                    'name': album.get('album', 'Unknown Album'),
+                    'name': album.get('name', 'Unknown Album'),
                     'artist_name': album.get('artist', 'Unknown Artist'),
                     'artist_id': album.get('artist_id'),
                     'mbid': album.get('mbid'),
@@ -1525,3 +1525,194 @@ def artist_detail(request, pk):
             return render(request, 'core/partials/artist_dynamic_content.html', context)
 
     return render(request, 'core/artist_detail.html', context)
+
+
+def album_detail(request, pk):
+    """
+    Album detail page with comprehensive album information.
+    Implements Story 27: Album Detail Page requirements.
+    """
+    import requests
+    import json
+
+    logger.info("Loading album detail page", extra={
+        'album_id': pk,
+        'user_agent': request.META.get('HTTP_USER_AGENT', ''),
+        'remote_addr': request.META.get('REMOTE_ADDR')
+    })
+
+    start_time = timezone.now()
+
+    # Get query parameters for filtering
+    time_period = request.GET.get('period', 'all').strip().lower()
+    tab = request.GET.get('tab', 'overview').strip().lower()
+
+    # Validate time period parameter
+    valid_periods = ['7d', '30d', '90d', '180d', '365d', 'all']
+    if time_period not in valid_periods:
+        time_period = 'all'
+
+    # Validate tab parameter
+    valid_tabs = ['overview', 'charts']
+    if tab not in valid_tabs:
+        tab = 'overview'
+
+    try:
+        # Build API request to album detail endpoint
+        api_url = f"http://127.0.0.1:8000/api/albums/{pk}/"
+        api_params = {}
+
+        # Add time period filtering if not all time
+        if time_period != 'all':
+            api_params['period'] = time_period
+
+        # Make API request with timeout
+        api_response = requests.get(api_url, params=api_params, timeout=15)
+
+        if api_response.status_code == 200:
+            api_data = api_response.json()
+
+            # Extract album data from API response
+            album_info = api_data.get('album', {})
+            tracks_list = api_data.get('tracks', [])
+            chart_data_raw = api_data.get('chart_data', {})
+
+            # Parse datetime strings back to datetime objects for template
+            if album_info.get('first_scrobbled'):
+                try:
+                    # Parse ISO datetime string back to datetime object
+                    first_str = album_info['first_scrobbled'].replace('Z', '+00:00')
+                    album_info['first_scrobbled'] = datetime.fromisoformat(first_str)
+                except (ValueError, AttributeError):
+                    album_info['first_scrobbled'] = None
+
+            if album_info.get('last_scrobbled'):
+                try:
+                    # Parse ISO datetime string back to datetime object
+                    last_str = album_info['last_scrobbled'].replace('Z', '+00:00')
+                    album_info['last_scrobbled'] = datetime.fromisoformat(last_str)
+                except (ValueError, AttributeError):
+                    album_info['last_scrobbled'] = None
+
+            # Transform chart data from API format to Chart.js format
+            chart_data_array = chart_data_raw.get('data', [])
+            chart_labels = [item['period'] for item in chart_data_array]
+            chart_values = [item['scrobble_count'] for item in chart_data_array]
+
+            # Calculate time period display text
+            period_display = time_period.replace('d', ' days').replace('all', 'All Time').title()
+
+            album_success = True
+            album_error = None
+
+        elif api_response.status_code == 404:
+            # Album not found
+            logger.warning(f"Album not found: {pk}")
+            album_info = {}
+            tracks_list = []
+            chart_labels = []
+            chart_values = []
+            period_display = 'All Time'
+            album_success = False
+            album_error = "Album not found"
+
+        else:
+            # API error fallback
+            logger.error(f"Album API error: {api_response.status_code}")
+            album_info = {}
+            tracks_list = []
+            chart_labels = []
+            chart_values = []
+            period_display = 'All Time'
+            album_success = False
+            album_error = f"Failed to load album data (HTTP {api_response.status_code})"
+
+    except requests.RequestException as e:
+        logger.error("Failed to fetch album data from API", exc_info=True)
+        # Fallback to empty state
+        album_info = {}
+        tracks_list = []
+        chart_labels = []
+        chart_values = []
+        period_display = 'All Time'
+        album_success = False
+        album_error = "Unable to connect to album data service"
+
+    except Exception as e:
+        logger.error("Error loading album detail page", exc_info=True)
+        # Fallback to empty state
+        album_info = {}
+        tracks_list = []
+        chart_labels = []
+        chart_values = []
+        period_display = 'All Time'
+        album_success = False
+        album_error = "An unexpected error occurred while loading album data"
+
+    # Build chart data for JavaScript
+    chart_data_dict = {
+        'labels': chart_labels,
+        'values': chart_values,
+        'success': album_success and len(chart_labels) > 0,
+        'error': album_error if not album_success else None,
+    }
+
+    # Build breadcrumb navigation
+    breadcrumbs = [
+        {'title': 'Home', 'url': '/'},
+        {'title': 'Artists', 'url': '/top-artists/'},
+    ]
+
+    if album_success and album_info.get('artist_name'):
+        artist_id = album_info.get('artist_id')
+        if artist_id:
+            breadcrumbs.append({
+                'title': album_info['artist_name'],
+                'url': f'/artists/{artist_id}/'
+            })
+        else:
+            breadcrumbs.append({'title': album_info['artist_name'], 'url': None})
+
+    if album_success and album_info.get('name'):
+        breadcrumbs.append({'title': album_info['name'], 'url': None})
+    else:
+        breadcrumbs.append({'title': 'Album Detail', 'url': None})
+
+    context = {
+        'album_info': album_info,
+        'album_success': album_success,
+        'album_error': album_error,
+        'tracks_list': tracks_list,
+        'chart_data': json.dumps(chart_data_dict),  # JSON string for JavaScript
+        'chart_data_dict': chart_data_dict,  # Python dict for template conditionals
+        'selected_period': time_period,
+        'selected_tab': tab,
+        'breadcrumbs': breadcrumbs,
+        'page_title': f"{album_info.get('name', 'Album Detail')} by {album_info.get('artist_name', 'Unknown Artist')}" if album_success else 'Album Detail',
+        'period_options': [
+            {'value': '7d', 'label': '7 days', 'active': time_period == '7d'},
+            {'value': '30d', 'label': '30 days', 'active': time_period == '30d'},
+            {'value': '90d', 'label': '90 days', 'active': time_period == '90d'},
+            {'value': '180d', 'label': '180 days', 'active': time_period == '180d'},
+            {'value': '365d', 'label': '1 year', 'active': time_period == '365d'},
+            {'value': 'all', 'label': 'All Time', 'active': time_period == 'all'},
+        ],
+        'tab_options': [
+            {'value': 'overview', 'label': 'Overview', 'active': tab == 'overview'},
+            {'value': 'charts', 'label': 'Charts', 'active': tab == 'charts'},
+        ],
+        'period_display': period_display,
+    }
+
+    # Handle partial template requests for htmx updates
+    partial = request.GET.get('partial')
+    if partial:
+        if partial == 'overview':
+            return render(request, 'core/partials/album_overview_content.html', context)
+        elif partial == 'charts':
+            return render(request, 'core/partials/album_chart_container.html', context)
+        elif partial == 'full':
+            # Return the full dynamic content area (time period selector + tab content)
+            return render(request, 'core/partials/album_dynamic_content.html', context)
+
+    return render(request, 'core/album_detail.html', context)

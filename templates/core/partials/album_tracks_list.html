@@ -1,37 +1,36 @@
-{% if top_albums %}
-    <div class="albums-compact-list">
-        {% for album in top_albums %}
-        <div class="album-compact-row">
-            <div class="album-compact-name">
-                {% if album.id %}
-                    <a href="{% url 'core:album-detail' album.id %}" class="album-link">{{ album.name }}</a>
-                {% else %}
-                    <span class="album-name">{{ album.name }}</span>
+{% if tracks_list %}
+    <div class="tracks-compact-list">
+        {% for track in tracks_list %}
+        <div class="track-compact-row">
+            <div class="track-compact-name">
+                <span class="track-link">{{ track.name }}</span>
+                {% if track.duration_formatted %}
+                <span class="track-duration-compact">{{ track.duration_formatted }}</span>
                 {% endif %}
             </div>
-            <div class="album-compact-count">
-                {{ album.scrobble_count }} scrobbles
+            <div class="track-compact-count">
+                {{ track.scrobble_count }} scrobble{{ track.scrobble_count|pluralize }}{% if track.percentage %} ({{ track.percentage }}%){% endif %}
             </div>
         </div>
         {% endfor %}
     </div>
 {% else %}
     <div class="empty-state">
-        <div class="empty-state-icon">💿</div>
-        <h3>No Albums Found</h3>
-        <p>No albums found for this artist in the selected time period. Try selecting a different time range.</p>
+        <div class="empty-state-icon">🎵</div>
+        <h3>No Tracks Found</h3>
+        <p>No track information is available for this album{% if selected_period != 'all' %} in the selected time period{% endif %}.</p>
     </div>
 {% endif %}
 
 <style>
-.albums-compact-list {
+.tracks-compact-list {
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 12px;
     overflow: hidden;
 }
 
-.album-compact-row {
+.track-compact-row {
     display: flex;
     align-items: center;
     padding: 1rem 1.5rem;
@@ -39,41 +38,35 @@
     transition: background 0.2s ease;
 }
 
-.album-compact-row:hover {
+.track-compact-row:hover {
     background: rgba(255, 255, 255, 0.08);
 }
 
-.album-compact-row:last-child {
+.track-compact-row:last-child {
     border-bottom: none;
 }
 
-.album-compact-name {
+.track-compact-name {
     flex: 1;
     display: flex;
     align-items: center;
+    gap: 0.75rem;
 }
 
-.album-link {
-    color: #e0e0e0;
-    text-decoration: none;
-    font-weight: 500;
-    font-size: 1rem;
-    line-height: 1.4;
-    transition: color 0.2s ease;
-}
-
-.album-link:hover {
-    color: #bb86fc;
-}
-
-.album-name {
+.track-link {
     color: #e0e0e0;
     font-weight: 500;
     font-size: 1rem;
     line-height: 1.4;
 }
 
-.album-compact-count {
+.track-duration-compact {
+    color: #666;
+    font-size: 0.85rem;
+    font-weight: 400;
+}
+
+.track-compact-count {
     color: #999;
     font-size: 0.9rem;
     font-weight: 500;
@@ -107,32 +100,39 @@
 
 /* Mobile responsive design */
 @media (max-width: 768px) {
-    .album-compact-row {
+    .track-compact-row {
         padding: 0.875rem 1rem;
     }
 
-    .album-link {
+    .track-link {
         font-size: 0.9rem;
     }
 
-    .album-compact-count {
+    .track-compact-count {
+        font-size: 0.8rem;
+    }
+
+    .track-duration-compact {
         font-size: 0.8rem;
     }
 }
 
 @media (max-width: 480px) {
-    .album-compact-row {
+    .track-compact-row {
         flex-direction: column;
         align-items: flex-start;
         gap: 0.5rem;
         padding: 1rem 0.875rem;
     }
 
-    .album-compact-name {
+    .track-compact-name {
         width: 100%;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.25rem;
     }
 
-    .album-compact-count {
+    .track-compact-count {
         align-self: flex-end;
         font-size: 0.875rem;
     }

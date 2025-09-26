@@ -1058,9 +1058,9 @@ class StatsViewSet(viewsets.ViewSet):
             )
 
             # Get track ordering parameter (album_order or scrobble_count)
-            track_ordering = request.query_params.get('ordering', 'album_order')
+            track_ordering = request.query_params.get('ordering', 'scrobble_count')
             if track_ordering not in ['album_order', 'scrobble_count']:
-                track_ordering = 'album_order'
+                track_ordering = 'scrobble_count'
 
             # Generate chart data for this album
             chart_data = self.generate_album_chart_data(request, album)

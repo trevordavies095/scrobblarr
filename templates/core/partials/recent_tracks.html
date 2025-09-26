@@ -36,8 +36,10 @@
                             <a href="{% url 'core:artist-detail' track.artist_id %}" class="table-link artist-name">{{ track.artist_name }}</a>
                         </td>
                         <td class="table-meta hidden-mobile">
-                            {% if track.album_name %}
-                                <a href="#" class="table-link album-name">{{ track.album_name }}</a>
+                            {% if track.album_name and track.album_id %}
+                                <a href="{% url 'core:album-detail' track.album_id %}" class="table-link album-name">{{ track.album_name }}</a>
+                            {% elif track.album_name %}
+                                <span class="album-name">{{ track.album_name }}</span>
                             {% else %}
                                 <span class="table-meta-empty">Unknown Album</span>
                             {% endif %}

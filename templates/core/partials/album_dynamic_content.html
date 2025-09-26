@@ -1,0 +1,29 @@
+<!-- Time Period Selector -->
+<div class="album-filters">
+    <div class="filter-section">
+        <label class="filter-label">Time Period:</label>
+        <div class="period-selector">
+            {% for option in period_options %}
+            <a href="{% url 'core:album-detail' album_info.id %}?period={{ option.value }}&tab={{ selected_tab }}"
+               class="period-btn{% if option.active %} active{% endif %}"
+               hx-get="{% url 'core:album-detail' album_info.id %}?period={{ option.value }}&tab={{ selected_tab }}&partial=full"
+               hx-target="#album-dynamic-content"
+               hx-push-url="false">
+                {{ option.label }}
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="filter-summary">
+        <span class="summary-text">{{ period_display }}</span>
+    </div>
+</div>
+
+<!-- Tab Content -->
+<div id="album-content" class="album-content">
+{% if selected_tab == 'overview' %}
+    {% include "core/partials/album_overview_content.html" %}
+{% elif selected_tab == 'charts' %}
+    {% include "core/partials/album_chart_container.html" %}
+{% endif %}
+</div>

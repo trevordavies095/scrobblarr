@@ -50,11 +50,12 @@
                         </a>
                     </td>
                     <td>
-                        {% if scrobble.album_name %}
-                            <!-- Future: Link to album detail page -->
-                            <span class="album-link" title="View album details (coming soon)">
+                        {% if scrobble.album_name and scrobble.album_id %}
+                            <a href="{% url 'core:album-detail' scrobble.album_id %}" class="album-link" title="View album details">
                                 {{ scrobble.album_name }}
-                            </span>
+                            </a>
+                        {% elif scrobble.album_name %}
+                            <span class="album-name">{{ scrobble.album_name }}</span>
                         {% else %}
                             <span class="text-muted">—</span>
                         {% endif %}

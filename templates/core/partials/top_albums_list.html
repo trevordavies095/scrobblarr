@@ -17,14 +17,9 @@
                     {{ album.rank }}
                 </td>
                 <td class="album-cell">
-                    {% comment %}
-                    <!-- Future enhancement: Link to album detail page -->
-                    <a href="{% url 'core:album-detail' album.id %}">
-                    {% endcomment %}
-                    <span class="album-name">{{ album.name }}</span>
-                    {% comment %}
+                    <a href="{% url 'core:album-detail' album.id %}" class="album-name">
+                        {{ album.name }}
                     </a>
-                    {% endcomment %}
                 </td>
                 <td class="artist-cell">
                     <a href="{% url 'core:artist-detail' album.artist_id %}" class="artist-name">

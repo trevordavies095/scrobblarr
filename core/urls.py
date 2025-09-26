@@ -11,6 +11,7 @@ urlpatterns = [
     path('top-tracks/', views.top_tracks, name='top-tracks'),
     path('charts/', views.charts, name='charts'),
     path('artists/<int:pk>/', views.artist_detail, name='artist-detail'),
+    path('albums/<int:pk>/', views.album_detail, name='album-detail'),
     path('health/', views.health_check, name='health_check'),
     path('health/readiness/', views.readiness_check, name='readiness_check'),
     path('health/liveness/', views.liveness_check, name='liveness_check'),
